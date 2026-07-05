@@ -26,31 +26,31 @@ const SEED_DATA = {
       id: "e0", sectionId: "s1", memberId: null, title: "Material de clase - Introducción a HCI",
       type: "Material de clase", date: "2026-04-10",
       description: "Diapositivas y guía compartidas por el profesor para la Unidad 1.",
-      tags: ["material", "profesor"], image: null
+      tags: ["material", "profesor"], attachment: null
     },
     {
       id: "e1", sectionId: "s1", memberId: "m1", title: "Heurísticas de Nielsen aplicadas",
       type: "Actividad", date: "2026-04-14",
       description: "Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.",
-      tags: ["usabilidad", "heurísticas"], image: null
+      tags: ["usabilidad", "heurísticas"], attachment: null
     },
     {
       id: "eA", sectionId: "s2", memberId: null, title: "Material de clase - Técnicas de DCU",
       type: "Material de clase", date: "2026-04-28",
       description: "Guía del profesor sobre entrevistas, personas y escenarios.",
-      tags: ["material", "profesor"], image: null
+      tags: ["material", "profesor"], attachment: null
     },
     {
       id: "e2", sectionId: "s2", memberId: "m2", title: "Entrevistas a usuarios objetivo",
       type: "Evidencia", date: "2026-05-02",
       description: "Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.",
-      tags: ["dcu", "entrevistas"], image: null
+      tags: ["dcu", "entrevistas"], attachment: null
     },
     {
       id: "e3", sectionId: "s3", memberId: "m3", title: "Wireframes de baja fidelidad",
       type: "Evidencia", date: "2026-05-20",
       description: "Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.",
-      tags: ["wireframe", "prototipo"], image: null
+      tags: ["wireframe", "prototipo"], attachment: null
     }
   ]
 };
@@ -67,13 +67,31 @@ let currentSectionId = null;
 let currentMemberId = null;
 
 let editingEntryId = null;
-let pendingImageData = null;
+let pendingAttachment = null;
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB: localStorage solo tiene ~5-10MB en total
 
 /* ---------- Persistencia ---------- */
+// Versiones anteriores guardaban solo imágenes en entry.image (dataURL).
+// Se convierten a la forma actual: entry.attachment = { name, type, data }.
+function normalizeEntries(entries) {
+  return (entries || []).map(e => {
+    if (e.attachment !== undefined) return e;
+    if (e.image) {
+      const { image, ...rest } = e;
+      return { ...rest, attachment: { name: "imagen", type: "image/*", data: image } };
+    }
+    return { ...e, attachment: null };
+  });
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      parsed.entries = normalizeEntries(parsed.entries);
+      return parsed;
+    }
   } catch (e) { console.warn("No se pudo leer localStorage", e); }
 
   // Migración desde una versión anterior sin integrantes
@@ -84,7 +102,7 @@ function loadState() {
       const migrated = {
         sections: old.sections || structuredClone(SEED_DATA.sections),
         members: structuredClone(SEED_DATA.members),
-        entries: (old.entries || []).map(e => ({ ...e, memberId: null }))
+        entries: normalizeEntries((old.entries || []).map(e => ({ ...e, memberId: null })))
       };
       return migrated;
     }
@@ -94,7 +112,12 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn("No se pudo guardar en localStorage", e);
+    showToast("No se pudo guardar: se acabó el espacio disponible en el navegador");
+  }
 }
 
 /* ---------- Utilidades ---------- */
@@ -122,6 +145,15 @@ function showToast(msg) {
 }
 function getMember(id) { return state.members.find(m => m.id === id) || null; }
 function getSection(id) { return state.sections.find(s => s.id === id) || null; }
+function isImageAttachment(att) { return !!att && /^image\//.test(att.type); }
+function attachmentIcon(att) {
+  if (!att) return "📎";
+  if (/^image\//.test(att.type)) return "🖼️";
+  if (att.type === "application/pdf") return "📕";
+  if (/word/.test(att.type)) return "📝";
+  if (/zip|compressed/.test(att.type)) return "🗜️";
+  return "📄";
+}
 
 /* ---------- Render: Sidebar ---------- */
 function renderSidebar() {
@@ -318,7 +350,11 @@ function renderEntryCard(entry, showOwner) {
       <div class="entry-title">${escapeHtml(entry.title)}</div>
       <div class="entry-meta">${sec ? escapeHtml(sec.name) : ""} · ${formatDate(entry.date)}</div>
       ${entry.description ? `<div class="entry-desc">${escapeHtml(entry.description)}</div>` : ""}
-      ${entry.image ? `<img class="entry-thumb" src="${entry.image}" alt="Imagen de evidencia" />` : ""}
+      ${entry.attachment
+        ? (isImageAttachment(entry.attachment)
+          ? `<img class="entry-thumb" src="${entry.attachment.data}" alt="Imagen de evidencia" />`
+          : `<div class="entry-file-chip">${attachmentIcon(entry.attachment)} ${escapeHtml(entry.attachment.name)}</div>`)
+        : ""}
       ${entry.tags && entry.tags.length ? `<div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
       <div class="entry-actions">
         <button class="btn btn-ghost btn-sm" data-action="edit" data-entry-id="${entry.id}">✏️ Editar</button>
@@ -356,9 +392,26 @@ function attachContentEvents() {
 }
 
 /* ---------- CRUD: Entradas ---------- */
+function updateAttachmentPreview() {
+  const preview = document.getElementById("entryAttachmentPreview");
+  if (!pendingAttachment) { preview.classList.add("hidden"); preview.innerHTML = ""; return; }
+  preview.classList.remove("hidden");
+  preview.innerHTML = isImageAttachment(pendingAttachment)
+    ? `<img src="${pendingAttachment.data}" alt="Vista previa" />
+       <button type="button" class="icon-btn" id="btnRemoveAttachment" title="Quitar archivo">✕</button>`
+    : `<span>${attachmentIcon(pendingAttachment)} ${escapeHtml(pendingAttachment.name)}</span>
+       <button type="button" class="icon-btn" id="btnRemoveAttachment" title="Quitar archivo">✕</button>`;
+  document.getElementById("btnRemoveAttachment").addEventListener("click", () => {
+    pendingAttachment = null;
+    document.getElementById("entryAttachment").value = "";
+    updateAttachmentPreview();
+  });
+}
+
 function openEntryModal(entryId, defaults) {
   editingEntryId = entryId || null;
-  pendingImageData = null;
+  pendingAttachment = null;
+  document.getElementById("entryAttachment").value = "";
   const overlay = document.getElementById("entryModalOverlay");
   const sectionSelect = document.getElementById("entrySection");
   const memberSelect = document.getElementById("entryMember");
@@ -378,10 +431,8 @@ function openEntryModal(entryId, defaults) {
     document.getElementById("entryDate").value = entry.date || "";
     document.getElementById("entryDescription").value = entry.description || "";
     document.getElementById("entryTags").value = (entry.tags || []).join(", ");
-    pendingImageData = entry.image || null;
-    const preview = document.getElementById("entryImagePreview");
-    if (entry.image) { preview.src = entry.image; preview.classList.remove("hidden"); }
-    else { preview.classList.add("hidden"); }
+    pendingAttachment = entry.attachment || null;
+    updateAttachmentPreview();
   } else {
     document.getElementById("entryModalTitle").textContent = "Nueva entrada";
     document.getElementById("entryForm").reset();
@@ -392,7 +443,7 @@ function openEntryModal(entryId, defaults) {
 
     if (defSection && state.sections.some(s => s.id === defSection)) sectionSelect.value = defSection;
     memberSelect.value = defMember || "";
-    document.getElementById("entryImagePreview").classList.add("hidden");
+    updateAttachmentPreview();
   }
   overlay.classList.add("open");
 }
@@ -400,7 +451,7 @@ function openEntryModal(entryId, defaults) {
 function closeEntryModal() {
   document.getElementById("entryModalOverlay").classList.remove("open");
   editingEntryId = null;
-  pendingImageData = null;
+  pendingAttachment = null;
 }
 
 function saveEntryFromForm(ev) {
@@ -422,7 +473,7 @@ function saveEntryFromForm(ev) {
     date: document.getElementById("entryDate").value,
     description: document.getElementById("entryDescription").value.trim(),
     tags,
-    image: pendingImageData
+    attachment: pendingAttachment
   };
 
   if (editingEntryId) {
@@ -462,7 +513,11 @@ function openViewModal(entryId) {
     <div class="detail-row"><div class="detail-label">Fecha</div><div class="detail-value">${formatDate(entry.date)}</div></div>
     <div class="detail-row"><div class="detail-label">Descripción</div><div class="detail-value">${escapeHtml(entry.description) || "Sin descripción"}</div></div>
     ${entry.tags && entry.tags.length ? `<div class="detail-row"><div class="detail-label">Etiquetas</div><div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div></div>` : ""}
-    ${entry.image ? `<img class="detail-image" src="${entry.image}" alt="Imagen de evidencia" />` : ""}
+    ${entry.attachment
+      ? (isImageAttachment(entry.attachment)
+        ? `<img class="detail-image" src="${entry.attachment.data}" alt="Imagen de evidencia" />`
+        : `<a class="btn btn-ghost btn-sm" href="${entry.attachment.data}" download="${escapeHtml(entry.attachment.name)}">${attachmentIcon(entry.attachment)} Descargar ${escapeHtml(entry.attachment.name)}</a>`)
+      : ""}
   `;
   document.getElementById("viewModalOverlay").classList.add("open");
 }
@@ -614,15 +669,18 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
   overlay.addEventListener("click", (ev) => { if (ev.target === overlay) overlay.classList.remove("open"); });
 });
 
-document.getElementById("entryImage").addEventListener("change", (ev) => {
+document.getElementById("entryAttachment").addEventListener("change", (ev) => {
   const file = ev.target.files[0];
   if (!file) return;
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    showToast("El archivo supera el límite de 4MB");
+    ev.target.value = "";
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
-    pendingImageData = reader.result;
-    const preview = document.getElementById("entryImagePreview");
-    preview.src = pendingImageData;
-    preview.classList.remove("hidden");
+    pendingAttachment = { name: file.name, type: file.type || "application/octet-stream", data: reader.result };
+    updateAttachmentPreview();
   };
   reader.readAsDataURL(file);
 });

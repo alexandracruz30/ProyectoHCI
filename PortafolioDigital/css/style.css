@@ -327,7 +327,29 @@ h1, h2, h3 { margin: 0; }
 .modal-body input[type="color"] { width: 60px; height: 36px; padding: 2px; cursor: pointer; }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-.image-preview { margin-top: var(--space-2); max-height: 160px; border-radius: 8px; object-fit: cover; }
+.attachment-preview {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+}
+.attachment-preview img { max-height: 80px; border-radius: 6px; object-fit: cover; }
+.attachment-preview span { flex: 1; word-break: break-all; }
+.attachment-preview #btnRemoveAttachment { margin-left: auto; }
+.entry-file-chip {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  word-break: break-all;
+}
 
 .modal-actions {
   display: flex;
