@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portafolio Digital - Interacción Humano-Computador</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ===== ENCABEZADO ===== -->
+  <header class="app-header">
+    <div class="header-left">
+      <button id="menuToggle" class="icon-btn" aria-label="Mostrar/ocultar menú" title="Mostrar/ocultar menú">☰</button>
+      <h1 class="app-title">📘 Portafolio Digital <span>HCI</span></h1>
+    </div>
+    <div class="header-right">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Buscar actividad o evidencia..." aria-label="Buscar" />
+      </div>
+      <button id="btnNuevaEntrada" class="btn btn-primary">+ Nueva entrada</button>
+    </div>
+  </header>
+
+  <div class="app-body">
+
+    <!-- ===== NAVEGACIÓN LATERAL ===== -->
+    <nav class="sidebar" id="sidebar" aria-label="Navegación de secciones">
+      <button class="nav-item active" data-view="dashboard">
+        <span class="nav-icon">🏠</span> Panel general
+      </button>
+
+      <div class="nav-group-label">Secciones / Unidades</div>
+      <ul id="sectionList" class="section-list"></ul>
+
+      <button id="btnNuevaSeccion" class="nav-item nav-add">
+        <span class="nav-icon">＋</span> Nueva sección
+      </button>
+
+      <div class="nav-group-label">Grupo</div>
+      <button id="btnGestionarIntegrantes" class="nav-item">
+        <span class="nav-icon">👥</span> Gestionar integrantes
+      </button>
+
+      <div class="nav-group-label">Otros</div>
+      <button class="nav-item" data-view="acerca">
+        <span class="nav-icon">ℹ️</span> Acerca del proyecto
+      </button>
+    </nav>
+
+    <!-- ===== CONTENIDO PRINCIPAL ===== -->
+    <main class="content" id="mainContent">
+      <!-- Se renderiza dinámicamente desde app.js -->
+    </main>
+  </div>
+
+  <!-- ===== MODAL: AGREGAR / EDITAR ENTRADA ===== -->
+  <div class="modal-overlay" id="entryModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="entryModalTitle">
+      <div class="modal-header">
+        <h2 id="entryModalTitle">Nueva entrada</h2>
+        <button class="icon-btn" id="closeEntryModal" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="entryForm" class="modal-body">
+        <input type="hidden" id="entryId" />
+
+        <label for="entryTitle">Título *</label>
+        <input type="text" id="entryTitle" required maxlength="100" placeholder="Ej. Laboratorio 3 - Heurísticas de Nielsen" />
+
+        <label for="entrySection">Sección / Unidad *</label>
+        <select id="entrySection" required></select>
+
+        <label for="entryMember">Bitácora de</label>
+        <select id="entryMember">
+          <option value="">— Material de clase (sin integrante) —</option>
+        </select>
+
+        <div class="form-row">
+          <div>
+            <label for="entryType">Tipo</label>
+            <select id="entryType">
+              <option value="Actividad">Actividad</option>
+              <option value="Evidencia">Evidencia</option>
+              <option value="Reflexión">Reflexión</option>
+              <option value="Proyecto">Proyecto</option>
+              <option value="Material de clase">Material de clase</option>
+            </select>
+          </div>
+          <div>
+            <label for="entryDate">Fecha</label>
+            <input type="date" id="entryDate" />
+          </div>
+        </div>
+
+        <label for="entryDescription">Descripción</label>
+        <textarea id="entryDescription" rows="4" maxlength="600" placeholder="Describe la actividad, lo aprendido o la evidencia..."></textarea>
+
+        <label for="entryTags">Etiquetas (separadas por coma)</label>
+        <input type="text" id="entryTags" placeholder="usabilidad, prototipo, heurísticas" />
+
+        <label for="entryImage">Imagen de evidencia (opcional)</label>
+        <input type="file" id="entryImage" accept="image/*" />
+        <img id="entryImagePreview" class="image-preview hidden" alt="Vista previa de la imagen" />
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelEntry">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: VER ENTRADA ===== -->
+  <div class="modal-overlay" id="viewModalOverlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="viewModalTitle">
+      <div class="modal-header">
+        <h2 id="viewModalTitle">Detalle</h2>
+        <button class="icon-btn" id="closeViewModal" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="modal-body" id="viewModalBody"></div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: NUEVA SECCIÓN ===== -->
+  <div class="modal-overlay" id="sectionModalOverlay">
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="sectionModalTitle">
+      <div class="modal-header">
+        <h2 id="sectionModalTitle">Nueva sección</h2>
+        <button class="icon-btn" id="closeSectionModal" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="sectionForm" class="modal-body">
+        <label for="sectionName">Nombre de la sección *</label>
+        <input type="text" id="sectionName" required maxlength="60" placeholder="Ej. Unidad 1 - Fundamentos de HCI" />
+
+        <label for="sectionDescription">Descripción breve</label>
+        <input type="text" id="sectionDescription" maxlength="150" placeholder="¿Qué contiene esta sección?" />
+
+        <label for="sectionColor">Color identificador</label>
+        <input type="color" id="sectionColor" value="#4f6df5" />
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelSection">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Crear sección</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: GESTIONAR INTEGRANTES ===== -->
+  <div class="modal-overlay" id="membersModalOverlay">
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="membersModalTitle">
+      <div class="modal-header">
+        <h2 id="membersModalTitle">Integrantes del grupo</h2>
+        <button class="icon-btn" id="closeMembersModal" aria-label="Cerrar">✕</button>
+      </div>
+      <form id="membersForm" class="modal-body">
+        <div id="membersList" class="members-list"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnAddMember" style="align-self:flex-start; margin-top:8px;">+ Agregar integrante</button>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="cancelMembers">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== TOAST de confirmación ===== -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
