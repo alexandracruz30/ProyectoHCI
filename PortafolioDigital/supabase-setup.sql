@@ -23,7 +23,7 @@ create table if not exists members (
 create table if not exists entries (
   id          text primary key,
   section_id  text references sections(id) on delete cascade,
-  member_id   text,
+  member_ids  jsonb default '[]'::jsonb,   -- lista de integrantes (trabajos en grupo)
   title       text not null,
   type        text default 'Actividad',
   date        text,
@@ -85,10 +85,10 @@ on conflict (id) do nothing;
 -- Nota: la entrada e0 tenía un PDF (HCI3.pdf). Como el archivo estaba guardado
 -- localmente, su adjunto queda en null; vuelve a subirlo desde la app (Editar
 -- la entrada -> Archivo de evidencia) y se guardará ya en Supabase Storage.
-insert into entries (id, section_id, member_id, title, type, date, description, tags, attachment) values
-  ('e0', 's1', null, 'Fundamentos de HCI', 'Material de clase', '2026-04-10', 'Diapositivas y guía compartidas por el profesor para la Unidad 1.', '["material","profesor"]'::jsonb, null),
-  ('e1', 's1', 'm1', 'Heurísticas de Nielsen aplicadas', 'Actividad', '2026-04-14', 'Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.', '["usabilidad","heurísticas"]'::jsonb, null),
-  ('eA', 's2', null, 'Material de clase - Técnicas de DCU', 'Material de clase', '2026-04-28', 'Guía del profesor sobre entrevistas, personas y escenarios.', '["material","profesor"]'::jsonb, null),
-  ('e2', 's2', 'm2', 'Entrevistas a usuarios objetivo', 'Evidencia', '2026-05-02', 'Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.', '["dcu","entrevistas"]'::jsonb, null),
-  ('e3', 's3', 'm3', 'Wireframes de baja fidelidad', 'Evidencia', '2026-05-20', 'Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.', '["wireframe","prototipo"]'::jsonb, null)
+insert into entries (id, section_id, member_ids, title, type, date, description, tags, attachment) values
+  ('e0', 's1', '[]'::jsonb,     'Fundamentos de HCI', 'Material de clase', '2026-04-10', 'Diapositivas y guía compartidas por el profesor para la Unidad 1.', '["material","profesor"]'::jsonb, null),
+  ('e1', 's1', '["m1"]'::jsonb, 'Heurísticas de Nielsen aplicadas', 'Actividad', '2026-04-14', 'Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.', '["usabilidad","heurísticas"]'::jsonb, null),
+  ('eA', 's2', '[]'::jsonb,     'Material de clase - Técnicas de DCU', 'Material de clase', '2026-04-28', 'Guía del profesor sobre entrevistas, personas y escenarios.', '["material","profesor"]'::jsonb, null),
+  ('e2', 's2', '["m2"]'::jsonb, 'Entrevistas a usuarios objetivo', 'Evidencia', '2026-05-02', 'Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.', '["dcu","entrevistas"]'::jsonb, null),
+  ('e3', 's3', '["m3"]'::jsonb, 'Wireframes de baja fidelidad', 'Evidencia', '2026-05-20', 'Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.', '["wireframe","prototipo"]'::jsonb, null)
 on conflict (id) do nothing;

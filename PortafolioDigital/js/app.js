@@ -23,31 +23,31 @@ const SEED_DATA = {
   ],
   entries: [
     {
-      id: "e0", sectionId: "s1", memberId: null, title: "Material de clase - Introducción a HCI",
+      id: "e0", sectionId: "s1", memberIds: [], title: "Material de clase - Introducción a HCI",
       type: "Material de clase", date: "2026-04-10",
       description: "Diapositivas y guía compartidas por el profesor para la Unidad 1.",
       tags: ["material", "profesor"], attachment: null
     },
     {
-      id: "e1", sectionId: "s1", memberId: "m1", title: "Heurísticas de Nielsen aplicadas",
+      id: "e1", sectionId: "s1", memberIds: ["m1"], title: "Heurísticas de Nielsen aplicadas",
       type: "Actividad", date: "2026-04-14",
       description: "Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.",
       tags: ["usabilidad", "heurísticas"], attachment: null
     },
     {
-      id: "eA", sectionId: "s2", memberId: null, title: "Material de clase - Técnicas de DCU",
+      id: "eA", sectionId: "s2", memberIds: [], title: "Material de clase - Técnicas de DCU",
       type: "Material de clase", date: "2026-04-28",
       description: "Guía del profesor sobre entrevistas, personas y escenarios.",
       tags: ["material", "profesor"], attachment: null
     },
     {
-      id: "e2", sectionId: "s2", memberId: "m2", title: "Entrevistas a usuarios objetivo",
+      id: "e2", sectionId: "s2", memberIds: ["m2"], title: "Entrevistas a usuarios objetivo",
       type: "Evidencia", date: "2026-05-02",
       description: "Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.",
       tags: ["dcu", "entrevistas"], attachment: null
     },
     {
-      id: "e3", sectionId: "s3", memberId: "m3", title: "Wireframes de baja fidelidad",
+      id: "e3", sectionId: "s3", memberIds: ["m3"], title: "Wireframes de baja fidelidad",
       type: "Evidencia", date: "2026-05-20",
       description: "Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.",
       tags: ["wireframe", "prototipo"], attachment: null
@@ -92,7 +92,7 @@ function rowToEntry(e) {
   return {
     id: e.id,
     sectionId: e.section_id,
-    memberId: e.member_id,
+    memberIds: e.member_ids || [],
     title: e.title,
     type: e.type,
     date: e.date,
@@ -177,6 +177,18 @@ function showToast(msg) {
   showToast._t = setTimeout(() => toast.classList.add("hidden"), 2200);
 }
 function getMember(id) { return state.members.find(m => m.id === id) || null; }
+// Lista de ids de integrantes de una entrada (tolera datos viejos con memberId único).
+function entryMemberIds(entry) {
+  if (Array.isArray(entry.memberIds)) return entry.memberIds;
+  if (entry.memberId) return [entry.memberId];
+  return [];
+}
+// Lista de objetos integrante (nombres) vinculados a una entrada.
+function entryMembers(entry) {
+  return entryMemberIds(entry).map(getMember).filter(Boolean);
+}
+// Una entrada es "material de clase" cuando no tiene ningún integrante.
+function isMaterial(entry) { return entryMemberIds(entry).length === 0; }
 function getSection(id) { return state.sections.find(s => s.id === id) || null; }
 function isImageAttachment(att) { return !!att && /^image\//.test(att.type); }
 function attachmentIcon(att) {
@@ -245,8 +257,17 @@ function renderDashboard() {
   const totalMembers = state.members.length;
   const lastEntry = [...state.entries].sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
 
+  // Grupo etiquetado (Material de clase / Actividades) para el panel general.
+  const group = (label, list, showOwner, emptyText) => `
+    <div class="entry-group-label">${label}</div>
+    ${list.length === 0
+      ? `<div class="group-empty">${emptyText}</div>`
+      : `<div class="entries-grid">${list.slice(0, 3).map(e => renderEntryCard(e, showOwner)).join("")}</div>`}`;
+
   const sectionsHtml = state.sections.map(sec => {
     const entries = state.entries.filter(e => e.sectionId === sec.id);
+    const material = entries.filter(e => isMaterial(e));
+    const activities = entries.filter(e => !isMaterial(e));
     return `
       <div class="section-block">
         <div class="section-block-header">
@@ -256,7 +277,8 @@ function renderDashboard() {
         </div>
         ${entries.length === 0
           ? `<div class="empty-state"><span class="big-icon">🗂️</span>Aún no hay entradas en esta sección.</div>`
-          : `<div class="entries-grid">${entries.slice(0, 3).map(e => renderEntryCard(e, true)).join("")}</div>`}
+          : group("📎 Material de clase", material, false, "Sin material aún.") +
+            group("📝 Actividades", activities, true, "Sin actividades aún.")}
       </div>`;
   }).join("");
 
@@ -285,10 +307,11 @@ function renderSectionOverview(sectionId) {
   const sec = getSection(sectionId);
   if (!sec) { currentPage = "dashboard"; return renderDashboard(); }
 
-  const material = state.entries.filter(e => e.sectionId === sectionId && !e.memberId);
+  const material = state.entries.filter(e => e.sectionId === sectionId && isMaterial(e));
+  const activities = state.entries.filter(e => e.sectionId === sectionId && !isMaterial(e));
 
   const memberCards = state.members.map(m => {
-    const count = state.entries.filter(e => e.sectionId === sectionId && e.memberId === m.id).length;
+    const count = state.entries.filter(e => e.sectionId === sectionId && entryMemberIds(e).includes(m.id)).length;
     return `
       <div class="member-card" data-member="${m.id}">
         <div class="member-avatar">${initials(m.name)}</div>
@@ -318,6 +341,15 @@ function renderSectionOverview(sectionId) {
         : `<div class="entries-grid">${material.map(e => renderEntryCard(e, false)).join("")}</div>`}
     </div>
 
+    <div class="material-block">
+      <div class="material-block-header">
+        <div class="material-block-title">📝 Actividades / Trabajos</div>
+      </div>
+      ${activities.length === 0
+        ? `<div class="empty-state"><span class="big-icon">📝</span>Todavía no hay actividades de los integrantes en esta unidad.</div>`
+        : `<div class="entries-grid">${activities.map(e => renderEntryCard(e, true)).join("")}</div>`}
+    </div>
+
     <div class="section-block-header" style="margin-bottom:12px;">
       <span class="section-block-title">👥 Bitácoras de los integrantes</span>
     </div>
@@ -330,7 +362,7 @@ function renderMemberBitacora(sectionId, memberId) {
   const member = getMember(memberId);
   if (!sec || !member) { currentMemberId = null; return renderSectionOverview(sectionId); }
 
-  const entries = state.entries.filter(e => e.sectionId === sectionId && e.memberId === memberId);
+  const entries = state.entries.filter(e => e.sectionId === sectionId && entryMemberIds(e).includes(memberId));
 
   return `
     <div class="breadcrumb">
@@ -370,9 +402,11 @@ function renderAcerca() {
 
 function renderEntryCard(entry, showOwner) {
   const sec = getSection(entry.sectionId);
-  const member = entry.memberId ? getMember(entry.memberId) : null;
+  const members = entryMembers(entry);
   const ownerPill = showOwner
-    ? `<span class="owner-pill ${member ? "" : "material"}">${member ? escapeHtml(member.name) : "Material de clase"}</span>`
+    ? (members.length
+        ? members.map(m => `<span class="owner-pill">${escapeHtml(m.name)}</span>`).join(" ")
+        : `<span class="owner-pill material">Material de clase</span>`)
     : "";
   return `
     <div class="entry-card" data-entry-id="${entry.id}" data-action="view">
@@ -411,7 +445,7 @@ function attachContentEvents() {
   if (delSecBtn) delSecBtn.addEventListener("click", () => deleteSection(currentSectionId));
 
   const addMaterialBtn = document.getElementById("btnAddMaterial");
-  if (addMaterialBtn) addMaterialBtn.addEventListener("click", () => openEntryModal(null, { sectionId: currentSectionId, memberId: "" }));
+  if (addMaterialBtn) addMaterialBtn.addEventListener("click", () => openEntryModal(null, { sectionId: currentSectionId, memberIds: [] }));
 
   document.querySelectorAll(".member-card").forEach(card => {
     card.addEventListener("click", () => {
@@ -441,17 +475,27 @@ function updateAttachmentPreview() {
   });
 }
 
+// Dibuja las casillas de integrantes en el modal, marcando los seleccionados.
+function renderMemberChecklist(selectedIds) {
+  const set = new Set(selectedIds || []);
+  const container = document.getElementById("entryMemberList");
+  container.innerHTML = state.members.length
+    ? state.members.map(m => `
+        <label class="member-check">
+          <input type="checkbox" value="${m.id}" ${set.has(m.id) ? "checked" : ""} />
+          <span>${escapeHtml(m.name)}</span>
+        </label>`).join("")
+    : `<div class="group-empty">No hay integrantes todavía. Agrégalos en "Gestionar integrantes".</div>`;
+}
+
 function openEntryModal(entryId, defaults) {
   editingEntryId = entryId || null;
   pendingAttachment = null;
   document.getElementById("entryAttachment").value = "";
   const overlay = document.getElementById("entryModalOverlay");
   const sectionSelect = document.getElementById("entrySection");
-  const memberSelect = document.getElementById("entryMember");
 
   sectionSelect.innerHTML = state.sections.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
-  memberSelect.innerHTML = `<option value="">— Material de clase (sin integrante) —</option>` +
-    state.members.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
 
   if (entryId) {
     const entry = state.entries.find(e => e.id === entryId);
@@ -459,7 +503,7 @@ function openEntryModal(entryId, defaults) {
     document.getElementById("entryId").value = entry.id;
     document.getElementById("entryTitle").value = entry.title;
     sectionSelect.value = entry.sectionId;
-    memberSelect.value = entry.memberId || "";
+    renderMemberChecklist(entryMemberIds(entry));
     document.getElementById("entryType").value = entry.type;
     document.getElementById("entryDate").value = entry.date || "";
     document.getElementById("entryDescription").value = entry.description || "";
@@ -472,10 +516,10 @@ function openEntryModal(entryId, defaults) {
     document.getElementById("entryId").value = "";
 
     const defSection = (defaults && defaults.sectionId) || (currentPage === "section" ? currentSectionId : null);
-    const defMember = defaults && "memberId" in defaults ? defaults.memberId : (currentMemberId || "");
+    const defMemberIds = defaults && "memberIds" in defaults ? defaults.memberIds : (currentMemberId ? [currentMemberId] : []);
 
     if (defSection && state.sections.some(s => s.id === defSection)) sectionSelect.value = defSection;
-    memberSelect.value = defMember || "";
+    renderMemberChecklist(defMemberIds);
     updateAttachmentPreview();
   }
   overlay.classList.add("open");
@@ -496,12 +540,13 @@ async function saveEntryFromForm(ev) {
   const tags = document.getElementById("entryTags").value
     .split(",").map(t => t.trim()).filter(Boolean);
 
-  const memberId = document.getElementById("entryMember").value || null;
+  const memberIds = [...document.querySelectorAll("#entryMemberList input[type=checkbox]:checked")]
+    .map(c => c.value);
 
   // Fila con los nombres de columna de la tabla "entries" en Supabase.
   const row = {
     section_id: sectionId,
-    member_id: memberId,
+    member_ids: memberIds,
     title,
     type: document.getElementById("entryType").value,
     date: document.getElementById("entryDate").value || null,
@@ -538,11 +583,12 @@ function openViewModal(entryId) {
   const entry = state.entries.find(e => e.id === entryId);
   if (!entry) return;
   const sec = getSection(entry.sectionId);
-  const member = entry.memberId ? getMember(entry.memberId) : null;
+  const members = entryMembers(entry);
+  const ownerText = members.length ? members.map(m => escapeHtml(m.name)).join(", ") : "Material de clase";
   document.getElementById("viewModalTitle").textContent = entry.title;
   document.getElementById("viewModalBody").innerHTML = `
     <div class="detail-row"><div class="detail-label">Sección</div><div class="detail-value">${sec ? escapeHtml(sec.name) : "—"}</div></div>
-    <div class="detail-row"><div class="detail-label">Bitácora de</div><div class="detail-value">${member ? escapeHtml(member.name) : "Material de clase"}</div></div>
+    <div class="detail-row"><div class="detail-label">Integrante(s)</div><div class="detail-value">${ownerText}</div></div>
     <div class="detail-row"><div class="detail-label">Tipo</div><div class="detail-value">${escapeHtml(entry.type)}</div></div>
     <div class="detail-row"><div class="detail-label">Fecha</div><div class="detail-value">${formatDate(entry.date)}</div></div>
     <div class="detail-row"><div class="detail-label">Descripción</div><div class="detail-value">${escapeHtml(entry.description) || "Sin descripción"}</div></div>
@@ -637,10 +683,14 @@ async function saveMembersFromForm(ev) {
   const { error } = await sb.from("members").upsert(newMembers);
   if (error) { console.warn(error); showToast("No se pudieron guardar los integrantes"); return; }
 
-  // Los integrantes eliminados: sus entradas pasan a "material de clase" (member_id = null)
-  // y luego se borran los integrantes.
+  // Integrantes eliminados: se les quita de la lista de cada trabajo. Si un
+  // trabajo se queda sin integrantes, pasa a ser "material de clase".
   if (removedIds.length) {
-    await sb.from("entries").update({ member_id: null }).in("member_id", removedIds);
+    const affected = state.entries.filter(e => entryMemberIds(e).some(id => removedIds.includes(id)));
+    for (const e of affected) {
+      const newIds = entryMemberIds(e).filter(id => !removedIds.includes(id));
+      await sb.from("entries").update({ member_ids: newIds }).eq("id", e.id);
+    }
     await sb.from("members").delete().in("id", removedIds);
   }
 
