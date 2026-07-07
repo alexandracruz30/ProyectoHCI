@@ -276,7 +276,50 @@ function render() {
       : renderSectionOverview(currentSectionId);
   }
   attachContentEvents();
+  // Tras dibujar, ajusta las etiquetas de integrantes que no quepan (+N).
+  requestAnimationFrame(collapseOwnerPills);
 }
+
+// Si las etiquetas de integrantes no caben en una línea, oculta las que
+// sobran y muestra un cuadrito "+N" (con la lista completa en el tooltip).
+function collapseOwnerPills() {
+  document.querySelectorAll(".owner-pills").forEach(container => {
+    // Reinicia: quita el "+N" anterior y muestra todas las etiquetas.
+    container.querySelector(".owner-more")?.remove();
+    const pills = [...container.querySelectorAll(".owner-pill")];
+    pills.forEach(p => (p.style.display = ""));
+    if (pills.length <= 1) return;
+
+    const gap = 4;
+    const available = container.clientWidth;
+    let total = 0;
+    pills.forEach((p, i) => { total += p.offsetWidth + (i ? gap : 0); });
+    if (total <= available) return; // todas caben, nada que hacer
+
+    // Prepara el cuadrito "+N" para reservar su ancho.
+    const more = document.createElement("span");
+    more.className = "owner-pill owner-more";
+    more.textContent = "+0";
+    container.appendChild(more);
+    const moreW = more.offsetWidth + gap;
+
+    let used = 0, shown = 0;
+    for (let i = 0; i < pills.length; i++) {
+      const w = pills[i].offsetWidth + (i ? gap : 0);
+      if (used + w + moreW > available) break;
+      used += w; shown++;
+    }
+    if (shown === 0) shown = 1; // muestra al menos una
+
+    const hidden = pills.slice(shown);
+    hidden.forEach(p => (p.style.display = "none"));
+    more.textContent = "+" + hidden.length;
+    more.title = "También: " + hidden.map(p => p.textContent).join(", ");
+  });
+}
+
+// Reajusta al cambiar el tamaño de la ventana (cambia el espacio disponible).
+window.addEventListener("resize", () => requestAnimationFrame(collapseOwnerPills));
 
 function renderDashboard() {
   const totalEntries = state.entries.length;
@@ -432,7 +475,7 @@ function renderEntryCard(entry, showOwner) {
   const members = entryMembers(entry);
   const ownerPill = showOwner
     ? (members.length
-        ? members.map(m => `<span class="owner-pill">${escapeHtml(m.name)}</span>`).join(" ")
+        ? `<span class="owner-pills">${members.map(m => `<span class="owner-pill">${escapeHtml(m.name)}</span>`).join("")}</span>`
         : `<span class="owner-pill material">Material de clase</span>`)
     : "";
   return `
