@@ -1,0 +1,116 @@
+{
+  "sections": [
+    {
+      "id": "s1",
+      "name": "Unidad 1 - Fundamentos de HCI",
+      "description": "Conceptos base de interacción humano-computador.",
+      "color": "#4f6df5"
+    },
+    {
+      "id": "s2",
+      "name": "Unidad 2 - Diseño Centrado en el Usuario",
+      "description": "Investigación, personas, escenarios y necesidades del usuario.",
+      "color": "#ff8a3d"
+    },
+    {
+      "id": "s3",
+      "name": "Unidad 3 - Prototipado y Usabilidad",
+      "description": "Wireframes, prototipos y evaluación heurística.",
+      "color": "#2fab66"
+    }
+  ],
+  "members": [
+    {
+      "id": "m1",
+      "name": "Integrante 1"
+    },
+    {
+      "id": "m2",
+      "name": "Integrante 2"
+    },
+    {
+      "id": "m3",
+      "name": "Integrante 3"
+    },
+    {
+      "id": "m4",
+      "name": "Integrante 4"
+    },
+    {
+      "id": "m5",
+      "name": "Integrante 5"
+    }
+  ],
+  "entries": [
+    {
+      "id": "e0",
+      "sectionId": "s1",
+      "memberId": null,
+      "title": "Material de clase - Introducción a HCI",
+      "type": "Material de clase",
+      "date": "2026-04-10",
+      "description": "Diapositivas y guía compartidas por el profesor para la Unidad 1.",
+      "tags": [
+        "material",
+        "profesor"
+      ],
+      "attachment": null
+    },
+    {
+      "id": "e1",
+      "sectionId": "s1",
+      "memberId": "m1",
+      "title": "Heurísticas de Nielsen aplicadas",
+      "type": "Actividad",
+      "date": "2026-04-14",
+      "description": "Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.",
+      "tags": [
+        "usabilidad",
+        "heurísticas"
+      ],
+      "attachment": null
+    },
+    {
+      "id": "eA",
+      "sectionId": "s2",
+      "memberId": null,
+      "title": "Material de clase - Técnicas de DCU",
+      "type": "Material de clase",
+      "date": "2026-04-28",
+      "description": "Guía del profesor sobre entrevistas, personas y escenarios.",
+      "tags": [
+        "material",
+        "profesor"
+      ],
+      "attachment": null
+    },
+    {
+      "id": "e2",
+      "sectionId": "s2",
+      "memberId": "m2",
+      "title": "Entrevistas a usuarios objetivo",
+      "type": "Evidencia",
+      "date": "2026-05-02",
+      "description": "Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.",
+      "tags": [
+        "dcu",
+        "entrevistas"
+      ],
+      "attachment": null
+    },
+    {
+      "id": "e3",
+      "sectionId": "s3",
+      "memberId": "m3",
+      "title": "Wireframes de baja fidelidad",
+      "type": "Evidencia",
+      "date": "2026-05-20",
+      "description": "Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.",
+      "tags": [
+        "wireframe",
+        "prototipo"
+      ],
+      "attachment": null
+    }
+  ]
+}

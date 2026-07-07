@@ -56,7 +56,9 @@ const SEED_DATA = {
 };
 
 /* ---------- Estado ---------- */
-let state = loadState();
+// Se inicializa con los datos semilla y se reemplaza al cargar desde el
+// servidor en init() (ver el final del archivo).
+let state = structuredClone(SEED_DATA);
 
 // Navegación: currentPage = 'dashboard' | 'acerca' | 'section'
 // Cuando currentPage === 'section': currentSectionId siempre presente.
@@ -68,11 +70,22 @@ let currentMemberId = null;
 
 let editingEntryId = null;
 let pendingAttachment = null;
-const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024; // 4MB: localStorage solo tiene ~5-10MB en total
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: los archivos se guardan en disco (uploads/)
 
-/* ---------- Persistencia ---------- */
-// Versiones anteriores guardaban solo imágenes en entry.image (dataURL).
-// Se convierten a la forma actual: entry.attachment = { name, type, data }.
+/* ---------- Persistencia (backend local via server.py) ----------
+   Los datos ya NO viven en el navegador: se leen y se guardan en el
+   servidor (data/state.json), de modo que quedan en el proyecto y se
+   pueden compartir por git. Los archivos subidos se guardan en uploads/
+   y en cada entrada solo se almacena su URL (att.url), no el archivo. */
+
+// Compatibilidad: versiones viejas guardaban la imagen embebida en att.data.
+// Esta función devuelve la fuente correcta ya sea URL (nuevo) o data (viejo).
+function attachmentSrc(att) {
+  if (!att) return "";
+  return att.url || att.data || "";
+}
+
+// Asegura que cada entrada tenga el campo attachment (aunque sea null).
 function normalizeEntries(entries) {
   return (entries || []).map(e => {
     if (e.attachment !== undefined) return e;
@@ -84,40 +97,57 @@ function normalizeEntries(entries) {
   });
 }
 
-function loadState() {
+async function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      parsed.entries = normalizeEntries(parsed.entries);
-      return parsed;
+    const res = await fetch("/api/state");
+    if (res.ok) {
+      const data = await res.json();
+      // Si el servidor todavía no tiene datos, devuelve {} -> usamos semilla.
+      if (data && Array.isArray(data.sections) && Array.isArray(data.entries)) {
+        data.members = data.members || structuredClone(SEED_DATA.members);
+        data.entries = normalizeEntries(data.entries);
+        return data;
+      }
     }
-  } catch (e) { console.warn("No se pudo leer localStorage", e); }
-
-  // Migración desde una versión anterior sin integrantes
-  try {
-    const oldRaw = localStorage.getItem(OLD_STORAGE_KEY);
-    if (oldRaw) {
-      const old = JSON.parse(oldRaw);
-      const migrated = {
-        sections: old.sections || structuredClone(SEED_DATA.sections),
-        members: structuredClone(SEED_DATA.members),
-        entries: normalizeEntries((old.entries || []).map(e => ({ ...e, memberId: null })))
-      };
-      return migrated;
-    }
-  } catch (e) { console.warn("No se pudo migrar datos anteriores", e); }
-
+  } catch (e) {
+    console.warn("No se pudo contactar al servidor, usando datos iniciales", e);
+    showToast("No se pudo conectar al servidor. ¿Ejecutaste 'python3 server.py'?");
+  }
   return structuredClone(SEED_DATA);
 }
 
-function saveState() {
+async function saveState() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const res = await fetch("/api/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state)
+    });
+    if (!res.ok) throw new Error("respuesta " + res.status);
   } catch (e) {
-    console.warn("No se pudo guardar en localStorage", e);
-    showToast("No se pudo guardar: se acabó el espacio disponible en el navegador");
+    console.warn("No se pudo guardar en el servidor", e);
+    showToast("No se pudo guardar en el servidor");
   }
+}
+
+// Sube un archivo al backend y devuelve { name, type, url } (o null si falla).
+async function uploadFile(file) {
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    headers: {
+      "X-File-Name": encodeURIComponent(file.name),
+      "X-File-Type": file.type || "application/octet-stream"
+    },
+    body: file
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || ("respuesta " + res.status));
+  }
+  const data = await res.json();
+  // El nombre viaja codificado en la cabecera; lo devolvemos legible.
+  data.name = decodeURIComponent(data.name || file.name);
+  return data;
 }
 
 /* ---------- Utilidades ---------- */
@@ -352,7 +382,7 @@ function renderEntryCard(entry, showOwner) {
       ${entry.description ? `<div class="entry-desc">${escapeHtml(entry.description)}</div>` : ""}
       ${entry.attachment
         ? (isImageAttachment(entry.attachment)
-          ? `<img class="entry-thumb" src="${entry.attachment.data}" alt="Imagen de evidencia" />`
+          ? `<img class="entry-thumb" src="${attachmentSrc(entry.attachment)}" alt="Imagen de evidencia" />`
           : `<div class="entry-file-chip">${attachmentIcon(entry.attachment)} ${escapeHtml(entry.attachment.name)}</div>`)
         : ""}
       ${entry.tags && entry.tags.length ? `<div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
@@ -397,7 +427,7 @@ function updateAttachmentPreview() {
   if (!pendingAttachment) { preview.classList.add("hidden"); preview.innerHTML = ""; return; }
   preview.classList.remove("hidden");
   preview.innerHTML = isImageAttachment(pendingAttachment)
-    ? `<img src="${pendingAttachment.data}" alt="Vista previa" />
+    ? `<img src="${attachmentSrc(pendingAttachment)}" alt="Vista previa" />
        <button type="button" class="icon-btn" id="btnRemoveAttachment" title="Quitar archivo">✕</button>`
     : `<span>${attachmentIcon(pendingAttachment)} ${escapeHtml(pendingAttachment.name)}</span>
        <button type="button" class="icon-btn" id="btnRemoveAttachment" title="Quitar archivo">✕</button>`;
@@ -515,8 +545,8 @@ function openViewModal(entryId) {
     ${entry.tags && entry.tags.length ? `<div class="detail-row"><div class="detail-label">Etiquetas</div><div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div></div>` : ""}
     ${entry.attachment
       ? (isImageAttachment(entry.attachment)
-        ? `<img class="detail-image" src="${entry.attachment.data}" alt="Imagen de evidencia" />`
-        : `<a class="btn btn-ghost btn-sm" href="${entry.attachment.data}" download="${escapeHtml(entry.attachment.name)}">${attachmentIcon(entry.attachment)} Descargar ${escapeHtml(entry.attachment.name)}</a>`)
+        ? `<img class="detail-image" src="${attachmentSrc(entry.attachment)}" alt="Imagen de evidencia" />`
+        : `<a class="btn btn-ghost btn-sm" href="${attachmentSrc(entry.attachment)}" download="${escapeHtml(entry.attachment.name)}">${attachmentIcon(entry.attachment)} Descargar ${escapeHtml(entry.attachment.name)}</a>`)
       : ""}
   `;
   document.getElementById("viewModalOverlay").classList.add("open");
@@ -669,20 +699,24 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
   overlay.addEventListener("click", (ev) => { if (ev.target === overlay) overlay.classList.remove("open"); });
 });
 
-document.getElementById("entryAttachment").addEventListener("change", (ev) => {
+document.getElementById("entryAttachment").addEventListener("change", async (ev) => {
   const file = ev.target.files[0];
   if (!file) return;
   if (file.size > MAX_ATTACHMENT_BYTES) {
-    showToast("El archivo supera el límite de 4MB");
+    showToast("El archivo supera el límite de 25MB");
     ev.target.value = "";
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    pendingAttachment = { name: file.name, type: file.type || "application/octet-stream", data: reader.result };
+  showToast("Subiendo archivo…");
+  try {
+    pendingAttachment = await uploadFile(file);
     updateAttachmentPreview();
-  };
-  reader.readAsDataURL(file);
+    showToast("Archivo subido");
+  } catch (e) {
+    console.warn("Error al subir el archivo", e);
+    showToast("No se pudo subir el archivo");
+    ev.target.value = "";
+  }
 });
 
 document.getElementById("searchInput").addEventListener("input", (ev) => handleSearch(ev.target.value));
@@ -707,5 +741,8 @@ document.addEventListener("keydown", (ev) => {
 });
 
 /* ---------- Inicio ---------- */
-saveState(); // asegura que los datos semilla/migrados queden guardados
-render();
+async function init() {
+  state = await loadState();
+  render();
+}
+init();
