@@ -486,3 +486,23 @@ h1, h2, h3 { margin: 0; }
 .member-row { display: flex; align-items: center; gap: 8px; }
 .member-row input[type="text"] { flex: 1; margin-top: 0; }
 .member-row .icon-btn { flex-shrink: 0; }
+
+/* ===== MODO SOLO LECTURA (publicado en GitHub Pages) ===== */
+.read-only-banner {
+  background: #eef2ff;
+  color: #3730a3;
+  border-bottom: 1px solid #c7d2fe;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+/* Oculta todos los controles de edición cuando es solo lectura */
+body.read-only #btnNuevaEntrada,
+body.read-only #btnNuevaSeccion,
+body.read-only #btnGestionarIntegrantes,
+body.read-only #btnDeleteSection,
+body.read-only #btnAddMaterial,
+body.read-only .entry-actions {
+  display: none !important;
+}

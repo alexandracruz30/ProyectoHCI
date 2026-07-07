@@ -177,10 +177,12 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             return self.send_error_json(f"No se pudo guardar el archivo: {e}", 500)
 
+        # URL relativa (sin "/" inicial) para que también funcione cuando el
+        # sitio se publica bajo una subruta en GitHub Pages.
         return self.send_json({
             "name": orig_name,
             "type": file_type,
-            "url": f"/uploads/{filename}",
+            "url": f"uploads/{filename}",
         })
 
     # Silencia el log por defecto y usa uno más corto

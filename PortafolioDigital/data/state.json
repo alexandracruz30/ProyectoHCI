@@ -20,26 +20,11 @@
     }
   ],
   "members": [
-    {
-      "id": "m1",
-      "name": "Integrante 1"
-    },
-    {
-      "id": "m2",
-      "name": "Integrante 2"
-    },
-    {
-      "id": "m3",
-      "name": "Integrante 3"
-    },
-    {
-      "id": "m4",
-      "name": "Integrante 4"
-    },
-    {
-      "id": "m5",
-      "name": "Integrante 5"
-    }
+    { "id": "m1", "name": "Mateo Arauz" },
+    { "id": "m2", "name": "Alexandra Cruz" },
+    { "id": "m3", "name": "Integrante 3" },
+    { "id": "m4", "name": "Integrante 4" },
+    { "id": "m5", "name": "Integrante 5" }
   ],
   "entries": [
     {
@@ -50,10 +35,7 @@
       "type": "Material de clase",
       "date": "2026-04-10",
       "description": "Diapositivas y guía compartidas por el profesor para la Unidad 1.",
-      "tags": [
-        "material",
-        "profesor"
-      ],
+      "tags": ["material", "profesor"],
       "attachment": null
     },
     {
@@ -64,10 +46,7 @@
       "type": "Actividad",
       "date": "2026-04-14",
       "description": "Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.",
-      "tags": [
-        "usabilidad",
-        "heurísticas"
-      ],
+      "tags": ["usabilidad", "heurísticas"],
       "attachment": null
     },
     {
@@ -78,10 +57,7 @@
       "type": "Material de clase",
       "date": "2026-04-28",
       "description": "Guía del profesor sobre entrevistas, personas y escenarios.",
-      "tags": [
-        "material",
-        "profesor"
-      ],
+      "tags": ["material", "profesor"],
       "attachment": null
     },
     {
@@ -92,10 +68,7 @@
       "type": "Evidencia",
       "date": "2026-05-02",
       "description": "Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.",
-      "tags": [
-        "dcu",
-        "entrevistas"
-      ],
+      "tags": ["dcu", "entrevistas"],
       "attachment": null
     },
     {
@@ -106,10 +79,7 @@
       "type": "Evidencia",
       "date": "2026-05-20",
       "description": "Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.",
-      "tags": [
-        "wireframe",
-        "prototipo"
-      ],
+      "tags": ["wireframe", "prototipo"],
       "attachment": null
     }
   ]

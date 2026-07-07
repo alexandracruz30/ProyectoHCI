@@ -97,28 +97,58 @@ function normalizeEntries(entries) {
   });
 }
 
+// READ_ONLY se activa cuando NO hay backend (p. ej. publicado en GitHub Pages):
+// entonces la app solo muestra los datos ya guardados en data/state.json.
+let READ_ONLY = false;
+
+function isValidState(data) {
+  return data && Array.isArray(data.sections) && Array.isArray(data.entries);
+}
+
 async function loadState() {
+  // 1) Intentar el backend local (servidor server.py corriendo).
   try {
-    const res = await fetch("/api/state");
+    const res = await fetch("api/state", { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
-      // Si el servidor todavía no tiene datos, devuelve {} -> usamos semilla.
-      if (data && Array.isArray(data.sections) && Array.isArray(data.entries)) {
+      if (isValidState(data)) {
+        data.members = data.members || structuredClone(SEED_DATA.members);
+        data.entries = normalizeEntries(data.entries);
+        return data;   // backend disponible, con datos
+      }
+      return structuredClone(SEED_DATA); // backend disponible, aún sin datos
+    }
+  } catch (e) {
+    // Sin backend: seguimos al modo estático.
+  }
+
+  // 2) Sin backend -> modo solo lectura: leer los datos publicados (estáticos).
+  READ_ONLY = true;
+  try {
+    const res = await fetch("data/state.json", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      if (isValidState(data)) {
         data.members = data.members || structuredClone(SEED_DATA.members);
         data.entries = normalizeEntries(data.entries);
         return data;
       }
     }
   } catch (e) {
-    console.warn("No se pudo contactar al servidor, usando datos iniciales", e);
-    showToast("No se pudo conectar al servidor. ¿Ejecutaste 'python3 server.py'?");
+    console.warn("No se pudieron cargar los datos publicados", e);
   }
+
+  // 3) Nada disponible: datos semilla de ejemplo.
   return structuredClone(SEED_DATA);
 }
 
 async function saveState() {
+  if (READ_ONLY) {
+    showToast("Versión publicada (solo lectura). Para editar, ejecuta el servidor local.");
+    return;
+  }
   try {
-    const res = await fetch("/api/state", {
+    const res = await fetch("api/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(state)
@@ -132,7 +162,7 @@ async function saveState() {
 
 // Sube un archivo al backend y devuelve { name, type, url } (o null si falla).
 async function uploadFile(file) {
-  const res = await fetch("/api/upload", {
+  const res = await fetch("api/upload", {
     method: "POST",
     headers: {
       "X-File-Name": encodeURIComponent(file.name),
@@ -741,8 +771,18 @@ document.addEventListener("keydown", (ev) => {
 });
 
 /* ---------- Inicio ---------- */
+function applyReadOnlyUI() {
+  // Oculta los controles de edición y muestra un aviso de solo lectura.
+  document.body.classList.add("read-only");
+  const banner = document.createElement("div");
+  banner.className = "read-only-banner";
+  banner.textContent = "👁️ Versión publicada (solo lectura). Para editar, ejecuta el servidor local.";
+  document.body.prepend(banner);
+}
+
 async function init() {
   state = await loadState();
+  if (READ_ONLY) applyReadOnlyUI();
   render();
 }
 init();
