@@ -20,23 +20,49 @@
     }
   ],
   "members": [
-    { "id": "m1", "name": "Mateo Arauz" },
-    { "id": "m2", "name": "Alexandra Cruz" },
-    { "id": "m3", "name": "Integrante 3" },
-    { "id": "m4", "name": "Integrante 4" },
-    { "id": "m5", "name": "Integrante 5" }
+    {
+      "id": "m1",
+      "name": "Mateo Arauz"
+    },
+    {
+      "id": "m2",
+      "name": "Alexandra Cruz"
+    },
+    {
+      "id": "m3",
+      "name": "Carlos Robles"
+    },
+    {
+      "id": "m4",
+      "name": "Daniel Troetsch"
+    },
+    {
+      "id": "m5",
+      "name": "Daniel Vega"
+    },
+    {
+      "id": "m_mr9zdvmorwfe3",
+      "name": "Cristhian Wu"
+    }
   ],
   "entries": [
     {
       "id": "e0",
       "sectionId": "s1",
       "memberId": null,
-      "title": "Material de clase - Introducción a HCI",
+      "title": "Fundamentos de HCI",
       "type": "Material de clase",
       "date": "2026-04-10",
       "description": "Diapositivas y guía compartidas por el profesor para la Unidad 1.",
-      "tags": ["material", "profesor"],
-      "attachment": null
+      "tags": [
+        "material",
+        "profesor"
+      ],
+      "attachment": {
+        "name": "HCI3.pdf",
+        "type": "application/pdf",
+        "url": "/uploads/20260706-204624-ot6x-HCI3.pdf"
+      }
     },
     {
       "id": "e1",
@@ -46,7 +72,10 @@
       "type": "Actividad",
       "date": "2026-04-14",
       "description": "Evaluación de una interfaz utilizando las 10 heurísticas de usabilidad de Nielsen, identificando hallazgos y severidad.",
-      "tags": ["usabilidad", "heurísticas"],
+      "tags": [
+        "usabilidad",
+        "heurísticas"
+      ],
       "attachment": null
     },
     {
@@ -57,7 +86,10 @@
       "type": "Material de clase",
       "date": "2026-04-28",
       "description": "Guía del profesor sobre entrevistas, personas y escenarios.",
-      "tags": ["material", "profesor"],
+      "tags": [
+        "material",
+        "profesor"
+      ],
       "attachment": null
     },
     {
@@ -68,7 +100,10 @@
       "type": "Evidencia",
       "date": "2026-05-02",
       "description": "Registro de entrevistas semiestructuradas para identificar necesidades y puntos de dolor del usuario.",
-      "tags": ["dcu", "entrevistas"],
+      "tags": [
+        "dcu",
+        "entrevistas"
+      ],
       "attachment": null
     },
     {
@@ -79,7 +114,10 @@
       "type": "Evidencia",
       "date": "2026-05-20",
       "description": "Bocetos iniciales de pantallas principales antes de pasar a alta fidelidad.",
-      "tags": ["wireframe", "prototipo"],
+      "tags": [
+        "wireframe",
+        "prototipo"
+      ],
       "attachment": null
     }
   ]

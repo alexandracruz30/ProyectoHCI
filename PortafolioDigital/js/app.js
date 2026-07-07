@@ -70,114 +70,87 @@ let currentMemberId = null;
 
 let editingEntryId = null;
 let pendingAttachment = null;
-const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB: los archivos se guardan en disco (uploads/)
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25MB por archivo
 
-/* ---------- Persistencia (backend local via server.py) ----------
-   Los datos ya NO viven en el navegador: se leen y se guardan en el
-   servidor (data/state.json), de modo que quedan en el proyecto y se
-   pueden compartir por git. Los archivos subidos se guardan en uploads/
-   y en cada entrada solo se almacena su URL (att.url), no el archivo. */
+/* ---------- Persistencia (Supabase: base de datos + storage en la nube) ----------
+   Los datos viven en Supabase, así todos los compañeros comparten el mismo
+   portafolio y ven los cambios en tiempo real. Los archivos subidos van al
+   bucket de Storage; en cada entrada solo se guarda su URL pública.
+   La configuración (URL y clave anónima) está en js/config.js. */
 
-// Compatibilidad: versiones viejas guardaban la imagen embebida en att.data.
-// Esta función devuelve la fuente correcta ya sea URL (nuevo) o data (viejo).
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const BUCKET = "evidencias"; // nombre del bucket de Storage en Supabase
+
+// Devuelve la fuente de un adjunto (URL pública del archivo).
 function attachmentSrc(att) {
   if (!att) return "";
   return att.url || att.data || "";
 }
 
-// Asegura que cada entrada tenga el campo attachment (aunque sea null).
-function normalizeEntries(entries) {
-  return (entries || []).map(e => {
-    if (e.attachment !== undefined) return e;
-    if (e.image) {
-      const { image, ...rest } = e;
-      return { ...rest, attachment: { name: "imagen", type: "image/*", data: image } };
-    }
-    return { ...e, attachment: null };
-  });
+// Convierte una fila de la tabla "entries" al formato que usa la app.
+function rowToEntry(e) {
+  return {
+    id: e.id,
+    sectionId: e.section_id,
+    memberId: e.member_id,
+    title: e.title,
+    type: e.type,
+    date: e.date,
+    description: e.description,
+    tags: e.tags || [],
+    attachment: e.attachment || null
+  };
 }
 
-// READ_ONLY se activa cuando NO hay backend (p. ej. publicado en GitHub Pages):
-// entonces la app solo muestra los datos ya guardados en data/state.json.
-let READ_ONLY = false;
-
-function isValidState(data) {
-  return data && Array.isArray(data.sections) && Array.isArray(data.entries);
-}
-
+// Carga TODO el estado (secciones, integrantes, entradas) desde Supabase.
 async function loadState() {
-  // 1) Intentar el backend local (servidor server.py corriendo).
   try {
-    const res = await fetch("api/state", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      if (isValidState(data)) {
-        data.members = data.members || structuredClone(SEED_DATA.members);
-        data.entries = normalizeEntries(data.entries);
-        return data;   // backend disponible, con datos
-      }
-      return structuredClone(SEED_DATA); // backend disponible, aún sin datos
-    }
+    const [secRes, memRes, entRes] = await Promise.all([
+      sb.from("sections").select("*").order("position", { ascending: true }),
+      sb.from("members").select("*").order("position", { ascending: true }),
+      sb.from("entries").select("*").order("created_at", { ascending: true })
+    ]);
+    const err = secRes.error || memRes.error || entRes.error;
+    if (err) throw err;
+    return {
+      sections: secRes.data.map(s => ({ id: s.id, name: s.name, description: s.description, color: s.color })),
+      members: memRes.data.map(m => ({ id: m.id, name: m.name })),
+      entries: entRes.data.map(rowToEntry)
+    };
   } catch (e) {
-    // Sin backend: seguimos al modo estático.
-  }
-
-  // 2) Sin backend -> modo solo lectura: leer los datos publicados (estáticos).
-  READ_ONLY = true;
-  try {
-    const res = await fetch("data/state.json", { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      if (isValidState(data)) {
-        data.members = data.members || structuredClone(SEED_DATA.members);
-        data.entries = normalizeEntries(data.entries);
-        return data;
-      }
-    }
-  } catch (e) {
-    console.warn("No se pudieron cargar los datos publicados", e);
-  }
-
-  // 3) Nada disponible: datos semilla de ejemplo.
-  return structuredClone(SEED_DATA);
-}
-
-async function saveState() {
-  if (READ_ONLY) {
-    showToast("Versión publicada (solo lectura). Para editar, ejecuta el servidor local.");
-    return;
-  }
-  try {
-    const res = await fetch("api/state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state)
-    });
-    if (!res.ok) throw new Error("respuesta " + res.status);
-  } catch (e) {
-    console.warn("No se pudo guardar en el servidor", e);
-    showToast("No se pudo guardar en el servidor");
+    console.warn("No se pudo cargar desde Supabase", e);
+    showToast("No se pudo conectar a Supabase. Revisa js/config.js");
+    return { sections: [], members: [], entries: [] };
   }
 }
 
-// Sube un archivo al backend y devuelve { name, type, url } (o null si falla).
+// Recarga el estado desde la nube y vuelve a dibujar la interfaz.
+async function reload() {
+  state = await loadState();
+  render();
+}
+
+// Escucha cambios en la base de datos: cuando un compañero edita algo,
+// a todos se les actualiza la vista en tiempo real.
+function subscribeRealtime() {
+  sb.channel("portafolio")
+    .on("postgres_changes", { event: "*", schema: "public", table: "sections" }, reload)
+    .on("postgres_changes", { event: "*", schema: "public", table: "members" }, reload)
+    .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, reload)
+    .subscribe();
+}
+
+// Sube un archivo al Storage de Supabase y devuelve { name, type, url }.
 async function uploadFile(file) {
-  const res = await fetch("api/upload", {
-    method: "POST",
-    headers: {
-      "X-File-Name": encodeURIComponent(file.name),
-      "X-File-Type": file.type || "application/octet-stream"
-    },
-    body: file
+  const clean = file.name.replace(/[^A-Za-z0-9._-]/g, "_");
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${clean}`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || undefined,
+    upsert: false
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || ("respuesta " + res.status));
-  }
-  const data = await res.json();
-  // El nombre viaja codificado en la cabecera; lo devolvemos legible.
-  data.name = decodeURIComponent(data.name || file.name);
-  return data;
+  if (error) throw error;
+  const { data } = sb.storage.from(BUCKET).getPublicUrl(path);
+  return { name: file.name, type: file.type || "application/octet-stream", url: data.publicUrl };
 }
 
 /* ---------- Utilidades ---------- */
@@ -514,7 +487,7 @@ function closeEntryModal() {
   pendingAttachment = null;
 }
 
-function saveEntryFromForm(ev) {
+async function saveEntryFromForm(ev) {
   ev.preventDefault();
   const title = document.getElementById("entryTitle").value.trim();
   const sectionId = document.getElementById("entrySection").value;
@@ -525,39 +498,40 @@ function saveEntryFromForm(ev) {
 
   const memberId = document.getElementById("entryMember").value || null;
 
-  const data = {
+  // Fila con los nombres de columna de la tabla "entries" en Supabase.
+  const row = {
+    section_id: sectionId,
+    member_id: memberId,
     title,
-    sectionId,
-    memberId,
     type: document.getElementById("entryType").value,
-    date: document.getElementById("entryDate").value,
+    date: document.getElementById("entryDate").value || null,
     description: document.getElementById("entryDescription").value.trim(),
     tags,
     attachment: pendingAttachment
   };
 
+  let error;
   if (editingEntryId) {
-    const idx = state.entries.findIndex(e => e.id === editingEntryId);
-    state.entries[idx] = { ...state.entries[idx], ...data };
-    showToast("Entrada actualizada");
+    ({ error } = await sb.from("entries").update(row).eq("id", editingEntryId));
   } else {
-    state.entries.push({ id: uid("e"), ...data });
-    showToast("Entrada agregada");
+    row.id = uid("e");
+    ({ error } = await sb.from("entries").insert(row));
   }
+  if (error) { console.warn(error); showToast("No se pudo guardar la entrada"); return; }
 
-  saveState();
+  showToast(editingEntryId ? "Entrada actualizada" : "Entrada agregada");
   closeEntryModal();
-  render();
+  await reload();
 }
 
-function deleteEntry(entryId) {
+async function deleteEntry(entryId) {
   const entry = state.entries.find(e => e.id === entryId);
   if (!entry) return;
   if (!confirm(`¿Eliminar la entrada "${entry.title}"? Esta acción no se puede deshacer.`)) return;
-  state.entries = state.entries.filter(e => e.id !== entryId);
-  saveState();
+  const { error } = await sb.from("entries").delete().eq("id", entryId);
+  if (error) { console.warn(error); showToast("No se pudo eliminar la entrada"); return; }
   showToast("Entrada eliminada");
-  render();
+  await reload();
 }
 
 function openViewModal(entryId) {
@@ -583,7 +557,7 @@ function openViewModal(entryId) {
 }
 
 /* ---------- CRUD: Secciones ---------- */
-function saveSectionFromForm(ev) {
+async function saveSectionFromForm(ev) {
   ev.preventDefault();
   const name = document.getElementById("sectionName").value.trim();
   if (!name) return;
@@ -591,20 +565,21 @@ function saveSectionFromForm(ev) {
     id: uid("s"),
     name,
     description: document.getElementById("sectionDescription").value.trim(),
-    color: document.getElementById("sectionColor").value
+    color: document.getElementById("sectionColor").value,
+    position: state.sections.length
   };
-  state.sections.push(section);
-  saveState();
+  const { error } = await sb.from("sections").insert(section);
+  if (error) { console.warn(error); showToast("No se pudo crear la sección"); return; }
   document.getElementById("sectionForm").reset();
   document.getElementById("sectionModalOverlay").classList.remove("open");
   currentPage = "section";
   currentSectionId = section.id;
   currentMemberId = null;
   showToast("Sección creada");
-  render();
+  await reload();
 }
 
-function deleteSection(sectionId) {
+async function deleteSection(sectionId) {
   const sec = getSection(sectionId);
   if (!sec) return;
   const count = state.entries.filter(e => e.sectionId === sectionId).length;
@@ -612,14 +587,14 @@ function deleteSection(sectionId) {
     ? `Esta sección tiene ${count} entrada(s). Al eliminarla también se eliminarán esas entradas. ¿Continuar?`
     : `¿Eliminar la sección "${sec.name}"?`;
   if (!confirm(msg)) return;
-  state.sections = state.sections.filter(s => s.id !== sectionId);
-  state.entries = state.entries.filter(e => e.sectionId !== sectionId);
-  saveState();
+  // Las entradas de la sección se borran solas por la regla ON DELETE CASCADE.
+  const { error } = await sb.from("sections").delete().eq("id", sectionId);
+  if (error) { console.warn(error); showToast("No se pudo eliminar la sección"); return; }
   currentPage = "dashboard";
   currentSectionId = null;
   currentMemberId = null;
   showToast("Sección eliminada");
-  render();
+  await reload();
 }
 
 /* ---------- CRUD: Integrantes ---------- */
@@ -645,25 +620,33 @@ function renderMembersList() {
   });
 }
 
-function saveMembersFromForm(ev) {
+async function saveMembersFromForm(ev) {
   ev.preventDefault();
   const rows = [...document.querySelectorAll("#membersList .member-row")];
   const keptIds = new Set();
-  const newMembers = rows.map(row => {
+  const newMembers = rows.map((row, i) => {
     const id = row.dataset.memberId;
     const name = row.querySelector(".member-name-input").value.trim() || "Integrante";
     keptIds.add(id);
-    return { id, name };
+    return { id, name, position: i };
   });
 
-  // Los integrantes eliminados en el formulario pasan sus entradas a "material de clase"
-  state.entries = state.entries.map(e => e.memberId && !keptIds.has(e.memberId) ? { ...e, memberId: null } : e);
-  state.members = newMembers;
+  const removedIds = state.members.filter(m => !keptIds.has(m.id)).map(m => m.id);
 
-  saveState();
+  // Crea/actualiza los integrantes que se conservan.
+  const { error } = await sb.from("members").upsert(newMembers);
+  if (error) { console.warn(error); showToast("No se pudieron guardar los integrantes"); return; }
+
+  // Los integrantes eliminados: sus entradas pasan a "material de clase" (member_id = null)
+  // y luego se borran los integrantes.
+  if (removedIds.length) {
+    await sb.from("entries").update({ member_id: null }).in("member_id", removedIds);
+    await sb.from("members").delete().in("id", removedIds);
+  }
+
   document.getElementById("membersModalOverlay").classList.remove("open");
   showToast("Integrantes actualizados");
-  render();
+  await reload();
 }
 
 function addMemberRow() {
@@ -771,18 +754,9 @@ document.addEventListener("keydown", (ev) => {
 });
 
 /* ---------- Inicio ---------- */
-function applyReadOnlyUI() {
-  // Oculta los controles de edición y muestra un aviso de solo lectura.
-  document.body.classList.add("read-only");
-  const banner = document.createElement("div");
-  banner.className = "read-only-banner";
-  banner.textContent = "👁️ Versión publicada (solo lectura). Para editar, ejecuta el servidor local.";
-  document.body.prepend(banner);
-}
-
 async function init() {
   state = await loadState();
-  if (READ_ONLY) applyReadOnlyUI();
   render();
+  subscribeRealtime(); // los cambios de otros compañeros llegan en vivo
 }
 init();
