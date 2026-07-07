@@ -191,6 +191,33 @@ function entryMembers(entry) {
 function isMaterial(entry) { return entryMemberIds(entry).length === 0; }
 function getSection(id) { return state.sections.find(s => s.id === id) || null; }
 function isImageAttachment(att) { return !!att && /^image\//.test(att.type); }
+function isPdfAttachment(att) {
+  return !!att && (att.type === "application/pdf" || /\.pdf$/i.test(att.name || ""));
+}
+// Vista previa embebida de un adjunto para el modal de detalle.
+// Imágenes y PDFs se muestran dentro de la página (sin descargar);
+// otros tipos ofrecen abrir en pestaña nueva o descargar.
+function renderAttachmentPreview(att) {
+  if (!att) return "";
+  const src = attachmentSrc(att);
+  const name = escapeHtml(att.name);
+  if (isImageAttachment(att)) {
+    return `<img class="detail-image" src="${src}" alt="Imagen de evidencia" />`;
+  }
+  if (isPdfAttachment(att)) {
+    return `
+      <iframe class="detail-pdf" src="${src}" title="Vista previa de ${name}"></iframe>
+      <div class="detail-file-actions">
+        <a class="btn btn-ghost btn-sm" href="${src}" target="_blank" rel="noopener">🔗 Abrir en pestaña nueva</a>
+        <a class="btn btn-ghost btn-sm" href="${src}" download="${name}">⬇ Descargar ${name}</a>
+      </div>`;
+  }
+  return `
+    <div class="detail-file-actions">
+      <a class="btn btn-ghost btn-sm" href="${src}" target="_blank" rel="noopener">${attachmentIcon(att)} Abrir ${name}</a>
+      <a class="btn btn-ghost btn-sm" href="${src}" download="${name}">⬇ Descargar</a>
+    </div>`;
+}
 function attachmentIcon(att) {
   if (!att) return "📎";
   if (/^image\//.test(att.type)) return "🖼️";
@@ -594,9 +621,7 @@ function openViewModal(entryId) {
     <div class="detail-row"><div class="detail-label">Descripción</div><div class="detail-value">${escapeHtml(entry.description) || "Sin descripción"}</div></div>
     ${entry.tags && entry.tags.length ? `<div class="detail-row"><div class="detail-label">Etiquetas</div><div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div></div>` : ""}
     ${entry.attachment
-      ? (isImageAttachment(entry.attachment)
-        ? `<img class="detail-image" src="${attachmentSrc(entry.attachment)}" alt="Imagen de evidencia" />`
-        : `<a class="btn btn-ghost btn-sm" href="${attachmentSrc(entry.attachment)}" download="${escapeHtml(entry.attachment.name)}">${attachmentIcon(entry.attachment)} Descargar ${escapeHtml(entry.attachment.name)}</a>`)
+      ? `<div class="detail-row"><div class="detail-label">Evidencia</div><div class="detail-value">${escapeHtml(entry.attachment.name)}</div></div>${renderAttachmentPreview(entry.attachment)}`
       : ""}
   `;
   document.getElementById("viewModalOverlay").classList.add("open");
