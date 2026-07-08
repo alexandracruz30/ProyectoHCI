@@ -19,8 +19,22 @@
         <input type="text" id="searchInput" placeholder="Buscar actividad o evidencia..." aria-label="Buscar" />
       </div>
       <button id="btnNuevaEntrada" class="btn btn-primary">+ Nueva entrada</button>
+
+      <div class="auth-area">
+        <button id="btnOpenAuth" class="btn btn-ghost btn-sm">🔑 Iniciar sesión</button>
+        <div id="userChip" class="user-chip hidden">
+          <span class="user-chip-avatar" id="userChipAvatar">?</span>
+          <span class="user-chip-info">
+            <span class="user-chip-name" id="userChipName"></span>
+            <span class="user-chip-status" id="userChipStatus"></span>
+          </span>
+          <button class="icon-btn" id="btnLogout" title="Cerrar sesión" aria-label="Cerrar sesión">⏻</button>
+        </div>
+      </div>
     </div>
   </header>
+
+  <div id="statusBanner" class="read-only-banner hidden"></div>
 
   <div class="app-body">
 
@@ -40,6 +54,12 @@
       <div class="nav-group-label">Grupo</div>
       <button id="btnGestionarIntegrantes" class="nav-item">
         <span class="nav-icon">👥</span> Gestionar integrantes
+      </button>
+
+      <div class="nav-group-label hidden" id="adminGroupLabel">Administración</div>
+      <button id="btnSolicitudes" class="nav-item hidden" data-view="solicitudes">
+        <span class="nav-icon">🛡️</span> Solicitudes de acceso
+        <span class="section-count hidden" id="pendingCount">0</span>
       </button>
 
       <div class="nav-group-label">Otros</div>
@@ -159,6 +179,47 @@
           <button type="submit" class="btn btn-primary">Guardar cambios</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: INICIAR SESIÓN / CREAR CUENTA ===== -->
+  <div class="modal-overlay" id="authModalOverlay">
+    <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">
+      <div class="modal-header">
+        <h2 id="authModalTitle">Iniciar sesión</h2>
+        <button class="icon-btn" id="closeAuthModal" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab active" data-tab="login">Iniciar sesión</button>
+          <button type="button" class="auth-tab" data-tab="signup">Crear cuenta</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <label for="loginEmail">Correo</label>
+          <input type="email" id="loginEmail" required autocomplete="username" />
+          <label for="loginPassword">Contraseña</label>
+          <input type="password" id="loginPassword" required minlength="6" autocomplete="current-password" />
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary">Entrar</button>
+          </div>
+        </form>
+
+        <form id="signupForm" class="auth-form hidden">
+          <label for="signupName">Tu nombre completo</label>
+          <input type="text" id="signupName" required maxlength="60" />
+          <label for="signupMember">¿Cuál integrante del grupo eres?</label>
+          <select id="signupMember" required></select>
+          <label for="signupEmail">Correo</label>
+          <input type="email" id="signupEmail" required autocomplete="username" />
+          <label for="signupPassword">Contraseña</label>
+          <input type="password" id="signupPassword" required minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+          <p class="auth-hint">Tu cuenta quedará <strong>pendiente de aprobación</strong> del administrador. Podrás ver toda la bitácora mientras tanto, pero no agregar ni editar entradas hasta que te aprueben.</p>
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary">Registrarme</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 

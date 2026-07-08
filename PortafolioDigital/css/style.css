@@ -563,6 +563,105 @@ body.read-only .entry-actions {
 .member-check:hover { background: var(--color-primary-light, #eef2ff); }
 .member-check input { margin: 0; cursor: pointer; }
 
+/* ===== AUTENTICACIÓN: chip de usuario en el header ===== */
+.auth-area { display: flex; align-items: center; }
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 24px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.user-chip-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12.5px;
+  flex-shrink: 0;
+}
+.user-chip-info { display: flex; flex-direction: column; line-height: 1.25; }
+.user-chip-name { font-size: 13px; font-weight: 700; }
+.user-chip-status { font-size: 11px; color: var(--color-text-muted); }
+.user-chip-status.status-admin { color: var(--color-primary-dark); }
+.user-chip-status.status-approved { color: var(--color-success); }
+.user-chip-status.status-pending { color: var(--color-accent); }
+.user-chip-status.status-rejected { color: var(--color-danger); }
+
+/* ===== AUTENTICACIÓN: modal iniciar sesión / crear cuenta ===== */
+.auth-tabs { display: flex; gap: 4px; margin-bottom: var(--space-2); background: var(--color-bg); border-radius: 8px; padding: 4px; }
+.auth-tab {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.auth-tab.active { background: var(--color-surface); color: var(--color-primary-dark); box-shadow: var(--shadow-sm); }
+.auth-form { display: flex; flex-direction: column; gap: var(--space-1); }
+.auth-hint { font-size: 12.5px; color: var(--color-text-muted); background: var(--color-primary-light); border-radius: 8px; padding: 8px 10px; margin-top: var(--space-2); }
+
+/* ===== SOLICITUDES DE ACCESO (panel de admin) ===== */
+.requests-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.request-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+.request-info { flex: 1 1 220px; min-width: 0; }
+.request-name { font-weight: 700; font-size: 14.5px; }
+.request-email { font-size: 12.5px; color: var(--color-text-muted); }
+.request-row select { padding: 7px 9px; border-radius: 8px; border: 1px solid var(--color-border); font-size: 13px; background: var(--color-bg); }
+.request-actions { display: flex; gap: 6px; }
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-admin { background: var(--color-primary-light); color: var(--color-primary-dark); }
+.badge-approved { background: #e6f7ee; color: var(--color-success); }
+.badge-pending { background: #fff3e6; color: #b8621b; }
+.badge-rejected { background: #fdeceb; color: var(--color-danger); }
+
+/* Solo se aplica cuando NO hay cuenta activa (sin cuenta, pendiente o
+   rechazada): oculta todos los controles de edición, igual que el modo
+   solo lectura ya existente. */
+body.no-write #btnNuevaEntrada,
+body.no-write #btnNuevaSeccion,
+body.no-write #btnGestionarIntegrantes,
+body.no-write #btnDeleteSection,
+body.no-write #btnAddMaterial,
+body.no-write .entry-actions {
+  display: none !important;
+}
+/* Integrante aprobado (no admin): puede agregar/editar sus propias
+   entradas, pero no administra secciones, integrantes ni material. */
+body.member-mode #btnNuevaSeccion,
+body.member-mode #btnGestionarIntegrantes,
+body.member-mode #btnAddMaterial,
+body.member-mode #btnDeleteSection {
+  display: none !important;
+}
+
 /* ===== VISTA PREVIA DE ARCHIVOS EN EL DETALLE ===== */
 .detail-pdf {
   width: 100%;

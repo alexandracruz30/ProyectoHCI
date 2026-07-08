@@ -153,6 +153,210 @@ async function uploadFile(file) {
   return { name: file.name, type: file.type || "application/octet-stream", url: data.publicUrl };
 }
 
+/* ---------- Autenticación y control de acceso ----------
+   Cada persona se registra eligiendo qué integrante del grupo es.
+   El admin aprueba esa solicitud desde "Solicitudes de acceso" antes de
+   que pueda agregar o editar entradas; mientras tanto (y cualquier
+   visitante sin cuenta) solo puede ver la bitácora completa. */
+
+let authUser = null;       // usuario de Supabase Auth (null si no hay sesión)
+let myProfile = null;      // fila de "profiles" del usuario actual
+let pendingProfiles = [];  // todas las solicitudes (solo se cargan si soy admin)
+
+function isAdmin() { return !!myProfile && myProfile.role === "admin" && myProfile.status === "approved"; }
+function isApprovedMember() { return !!myProfile && myProfile.role === "member" && myProfile.status === "approved"; }
+function canWrite() { return isAdmin() || isApprovedMember(); }
+// Un integrante aprobado solo puede crear/editar entradas donde él mismo figura como autor.
+function canEditEntry(entry) {
+  if (isAdmin()) return true;
+  if (!isApprovedMember()) return false;
+  return entryMemberIds(entry).includes(myProfile.member_id);
+}
+
+// Crea la fila de "profiles" si todavía no existe (primer login tras
+// confirmar el correo, o justo después de registrarse).
+async function ensureProfile(user) {
+  const { data: existing } = await sb.from("profiles").select("*").eq("id", user.id).maybeSingle();
+  if (existing) return existing;
+  const meta = user.user_metadata || {};
+  const row = { id: user.id, email: user.email, full_name: meta.full_name || "", member_id: meta.member_id || null };
+  const { data, error } = await sb.from("profiles").insert(row).select().maybeSingle();
+  if (error) { console.warn("No se pudo crear el perfil", error); return null; }
+  return data;
+}
+
+// Carga el usuario autenticado y su perfil (rol/estado) desde Supabase.
+async function loadMyProfile() {
+  const { data: { user } } = await sb.auth.getUser();
+  authUser = user || null;
+  myProfile = authUser ? await ensureProfile(authUser) : null;
+}
+
+// Solo el admin necesita ver todas las solicitudes para aprobarlas.
+async function loadPendingProfiles() {
+  if (!isAdmin()) { pendingProfiles = []; return; }
+  const { data, error } = await sb.from("profiles").select("*").order("created_at", { ascending: true });
+  pendingProfiles = error ? [] : data;
+}
+
+// Cuenta cuántas solicitudes están pendientes (para el badge del menú).
+async function updatePendingBadge() {
+  const badge = document.getElementById("pendingCount");
+  if (!isAdmin()) { badge.classList.add("hidden"); return; }
+  const { count } = await sb.from("profiles").select("*", { count: "exact", head: true }).eq("status", "pending");
+  if (count) { badge.textContent = String(count); badge.classList.remove("hidden"); }
+  else { badge.classList.add("hidden"); }
+}
+
+// Refleja la sesión actual en el header, el banner y el modo de solo lectura.
+function refreshAuthUI() {
+  const btnOpenAuth = document.getElementById("btnOpenAuth");
+  const chip = document.getElementById("userChip");
+  const banner = document.getElementById("statusBanner");
+
+  document.body.classList.toggle("no-write", !canWrite());
+  document.body.classList.toggle("member-mode", isApprovedMember() && !isAdmin());
+
+  if (!authUser) {
+    btnOpenAuth.classList.remove("hidden");
+    chip.classList.add("hidden");
+    banner.classList.add("hidden");
+  } else {
+    btnOpenAuth.classList.add("hidden");
+    chip.classList.remove("hidden");
+    const name = (myProfile && myProfile.full_name) || authUser.email;
+    document.getElementById("userChipAvatar").textContent = initials(name);
+    document.getElementById("userChipName").textContent = name;
+    const statusEl = document.getElementById("userChipStatus");
+    if (isAdmin()) { statusEl.textContent = "Administrador"; statusEl.className = "user-chip-status status-admin"; }
+    else if (isApprovedMember()) { statusEl.textContent = "Aprobado"; statusEl.className = "user-chip-status status-approved"; }
+    else if (myProfile && myProfile.status === "rejected") { statusEl.textContent = "Solicitud rechazada"; statusEl.className = "user-chip-status status-rejected"; }
+    else { statusEl.textContent = "Pendiente de aprobación"; statusEl.className = "user-chip-status status-pending"; }
+
+    if (myProfile && myProfile.status === "pending") {
+      banner.textContent = "⏳ Tu cuenta está pendiente de aprobación del administrador. Mientras tanto puedes ver toda la bitácora, pero no agregar ni editar entradas.";
+      banner.classList.remove("hidden");
+    } else if (myProfile && myProfile.status === "rejected") {
+      banner.textContent = "🚫 El administrador rechazó tu solicitud de acceso. Contáctalo si crees que es un error.";
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+    }
+  }
+
+  document.getElementById("btnSolicitudes").classList.toggle("hidden", !isAdmin());
+  document.getElementById("adminGroupLabel").classList.toggle("hidden", !isAdmin());
+  updatePendingBadge();
+}
+
+/* ---------- Modal de inicio de sesión / registro ---------- */
+function populateSignupMemberSelect() {
+  const sel = document.getElementById("signupMember");
+  sel.innerHTML = state.members.length
+    ? state.members.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("")
+    : `<option value="">No hay integrantes registrados todavía</option>`;
+}
+
+function setAuthTab(tab) {
+  document.querySelectorAll(".auth-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.getElementById("loginForm").classList.toggle("hidden", tab !== "login");
+  document.getElementById("signupForm").classList.toggle("hidden", tab !== "signup");
+  document.getElementById("authModalTitle").textContent = tab === "login" ? "Iniciar sesión" : "Crear cuenta";
+}
+
+function openAuthModal(tab) {
+  populateSignupMemberSelect();
+  setAuthTab(tab || "login");
+  document.getElementById("authModalOverlay").classList.add("open");
+}
+function closeAuthModal() { document.getElementById("authModalOverlay").classList.remove("open"); }
+
+async function handleLogin(ev) {
+  ev.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { showToast("No se pudo iniciar sesión: " + error.message); return; }
+  document.getElementById("loginForm").reset();
+  closeAuthModal();
+  showToast("Sesión iniciada");
+}
+
+async function handleSignup(ev) {
+  ev.preventDefault();
+  const full_name = document.getElementById("signupName").value.trim();
+  const member_id = document.getElementById("signupMember").value;
+  const email = document.getElementById("signupEmail").value.trim();
+  const password = document.getElementById("signupPassword").value;
+  if (!full_name || !member_id) { showToast("Completa tu nombre y elige qué integrante eres"); return; }
+
+  const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name, member_id } } });
+  if (error) { showToast("No se pudo registrar: " + error.message); return; }
+
+  document.getElementById("signupForm").reset();
+  closeAuthModal();
+  showToast(data.session
+    ? "Cuenta creada. Queda pendiente de aprobación del administrador."
+    : "Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
+}
+
+async function handleLogout() {
+  await sb.auth.signOut();
+  showToast("Sesión cerrada");
+}
+
+/* ---------- Panel de admin: solicitudes de acceso ---------- */
+async function approveProfile(id, memberId) {
+  if (!memberId) { showToast("Selecciona qué integrante es antes de aprobar"); return; }
+  const { error } = await sb.from("profiles").update({ member_id: memberId, status: "approved" }).eq("id", id);
+  if (error) {
+    console.warn(error);
+    showToast(error.code === "23505" ? "Ese integrante ya tiene una cuenta aprobada" : "No se pudo aprobar la solicitud");
+    return;
+  }
+  showToast("Solicitud aprobada");
+  await refreshAdminPanel();
+}
+
+async function rejectProfile(id) {
+  if (!confirm("¿Rechazar esta solicitud de acceso?")) return;
+  const { error } = await sb.from("profiles").update({ status: "rejected" }).eq("id", id);
+  if (error) { console.warn(error); showToast("No se pudo rechazar la solicitud"); return; }
+  showToast("Solicitud rechazada");
+  await refreshAdminPanel();
+}
+
+async function revokeProfile(id) {
+  if (!confirm("¿Revocar el acceso de edición de este integrante?")) return;
+  const { error } = await sb.from("profiles").update({ status: "rejected" }).eq("id", id);
+  if (error) { console.warn(error); showToast("No se pudo revocar el acceso"); return; }
+  showToast("Acceso revocado");
+  await refreshAdminPanel();
+}
+
+async function refreshAdminPanel() {
+  await loadPendingProfiles();
+  if (currentPage === "solicitudes") render();
+  updatePendingBadge();
+}
+
+// Escucha cambios en "profiles": si me aprueban/rechazan en otro
+// dispositivo se actualiza mi acceso al instante; si soy admin, el
+// panel de solicitudes se refresca cuando alguien se registra.
+function subscribeAuthRealtime() {
+  sb.channel("profiles")
+    .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, async (payload) => {
+      const affectedId = (payload.new && payload.new.id) || (payload.old && payload.old.id);
+      if (authUser && affectedId === authUser.id) {
+        await loadMyProfile();
+        refreshAuthUI();
+        render();
+      }
+      if (isAdmin()) await refreshAdminPanel();
+    })
+    .subscribe();
+}
+
 /* ---------- Utilidades ---------- */
 function uid(prefix) { return prefix + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function escapeHtml(str) {
@@ -274,6 +478,8 @@ function render() {
     main.innerHTML = currentMemberId
       ? renderMemberBitacora(currentSectionId, currentMemberId)
       : renderSectionOverview(currentSectionId);
+  } else if (currentPage === "solicitudes") {
+    main.innerHTML = renderSolicitudes();
   }
   attachContentEvents();
   // Tras dibujar, ajusta las etiquetas de integrantes que no quepan (+N).
@@ -493,11 +699,63 @@ function renderEntryCard(entry, showOwner) {
           : `<div class="entry-file-chip">${attachmentIcon(entry.attachment)} ${escapeHtml(entry.attachment.name)}</div>`)
         : ""}
       ${entry.tags && entry.tags.length ? `<div class="entry-tags">${entry.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</div>` : ""}
+      ${canEditEntry(entry) ? `
       <div class="entry-actions">
         <button class="btn btn-ghost btn-sm" data-action="edit" data-entry-id="${entry.id}">✏️ Editar</button>
         <button class="btn btn-ghost btn-sm" data-action="delete" data-entry-id="${entry.id}">🗑 Eliminar</button>
-      </div>
+      </div>` : ""}
     </div>`;
+}
+
+function renderSolicitudes() {
+  if (!isAdmin()) { currentPage = "dashboard"; return renderDashboard(); }
+
+  const pending = pendingProfiles.filter(p => p.status === "pending");
+  const others = pendingProfiles.filter(p => p.status !== "pending" && p.id !== myProfile.id);
+  const memberOptions = (selectedId) => state.members.map(m =>
+    `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${escapeHtml(m.name)}</option>`).join("");
+
+  const row = (p, actionsHtml) => `
+    <div class="request-row" data-profile-id="${p.id}">
+      <div class="request-info">
+        <div class="request-name">${escapeHtml(p.full_name || p.email)}</div>
+        <div class="request-email">${escapeHtml(p.email)}</div>
+      </div>
+      <select class="request-member-select" ${p.role === "admin" ? "disabled" : ""}>
+        <option value="">Sin asignar</option>
+        ${memberOptions(p.member_id)}
+      </select>
+      ${actionsHtml}
+    </div>`;
+
+  const pendingHtml = pending.length
+    ? pending.map(p => row(p, `
+        <div class="request-actions">
+          <button class="btn btn-primary btn-sm" data-action="approve">✔ Aprobar</button>
+          <button class="btn btn-ghost btn-sm" data-action="reject">✕ Rechazar</button>
+        </div>`)).join("")
+    : `<div class="empty-state"><span class="big-icon">✅</span>No hay solicitudes pendientes.</div>`;
+
+  const othersHtml = others.map(p => row(p, `
+      <span class="badge ${p.role === "admin" ? "badge-admin" : p.status === "approved" ? "badge-approved" : "badge-rejected"}">
+        ${p.role === "admin" ? "Admin" : p.status === "approved" ? "Aprobado" : "Rechazado"}
+      </span>
+      <div class="request-actions">
+        ${p.status === "approved"
+          ? `<button class="btn btn-ghost btn-sm" data-action="revoke">Revocar acceso</button>`
+          : p.role !== "admin" ? `<button class="btn btn-ghost btn-sm" data-action="approve">✔ Aprobar</button>` : ""}
+      </div>`)).join("");
+
+  return `
+    <div class="page-title-row">
+      <div>
+        <div class="page-title">Solicitudes de acceso</div>
+        <div class="page-subtitle">Aprueba a cada integrante para que pueda agregar y editar su propia bitácora.</div>
+      </div>
+    </div>
+    <div class="requests-list">${pendingHtml}</div>
+    ${others.length ? `<div class="entry-group-label" style="margin-top:24px;">Cuentas ya gestionadas</div><div class="requests-list">${othersHtml}</div>` : ""}
+  `;
 }
 
 function attachContentEvents() {
@@ -512,10 +770,16 @@ function attachContentEvents() {
   });
 
   const delSecBtn = document.getElementById("btnDeleteSection");
-  if (delSecBtn) delSecBtn.addEventListener("click", () => deleteSection(currentSectionId));
+  if (delSecBtn) delSecBtn.addEventListener("click", () => {
+    if (!isAdmin()) { showToast("Solo el administrador puede eliminar secciones"); return; }
+    deleteSection(currentSectionId);
+  });
 
   const addMaterialBtn = document.getElementById("btnAddMaterial");
-  if (addMaterialBtn) addMaterialBtn.addEventListener("click", () => openEntryModal(null, { sectionId: currentSectionId, memberIds: [] }));
+  if (addMaterialBtn) addMaterialBtn.addEventListener("click", () => {
+    if (!isAdmin()) { showToast("Solo el administrador puede agregar material de clase"); return; }
+    openEntryModal(null, { sectionId: currentSectionId, memberIds: [] });
+  });
 
   document.querySelectorAll(".member-card").forEach(card => {
     card.addEventListener("click", () => {
@@ -526,6 +790,17 @@ function attachContentEvents() {
 
   const backBtn = document.getElementById("btnBackToSection");
   if (backBtn) backBtn.addEventListener("click", () => { currentMemberId = null; render(); });
+
+  document.querySelectorAll(".request-row").forEach(rowEl => {
+    const id = rowEl.dataset.profileId;
+    const select = rowEl.querySelector(".request-member-select");
+    const approveBtn = rowEl.querySelector('[data-action="approve"]');
+    const rejectBtn = rowEl.querySelector('[data-action="reject"]');
+    const revokeBtn = rowEl.querySelector('[data-action="revoke"]');
+    if (approveBtn) approveBtn.addEventListener("click", () => approveProfile(id, select.value || null));
+    if (rejectBtn) rejectBtn.addEventListener("click", () => rejectProfile(id));
+    if (revokeBtn) revokeBtn.addEventListener("click", () => revokeProfile(id));
+  });
 }
 
 /* ---------- CRUD: Entradas ---------- */
@@ -548,11 +823,15 @@ function updateAttachmentPreview() {
 // Dibuja las casillas de integrantes en el modal, marcando los seleccionados.
 function renderMemberChecklist(selectedIds) {
   const set = new Set(selectedIds || []);
+  // Un integrante aprobado siempre queda marcado a sí mismo (no puede
+  // quitarse), así se prueba que es dueño de la entrada que crea/edita.
+  const lockedId = isApprovedMember() ? myProfile.member_id : null;
+  if (lockedId) set.add(lockedId);
   const container = document.getElementById("entryMemberList");
   container.innerHTML = state.members.length
     ? state.members.map(m => `
         <label class="member-check">
-          <input type="checkbox" value="${m.id}" ${set.has(m.id) ? "checked" : ""} />
+          <input type="checkbox" value="${m.id}" ${set.has(m.id) ? "checked" : ""} ${m.id === lockedId ? "disabled" : ""} />
           <span>${escapeHtml(m.name)}</span>
         </label>`).join("")
     : `<div class="group-empty">No hay integrantes todavía. Agrégalos en "Gestionar integrantes".</div>`;
@@ -603,6 +882,12 @@ function closeEntryModal() {
 
 async function saveEntryFromForm(ev) {
   ev.preventDefault();
+  if (!canWrite()) { showToast("Debes iniciar sesión con una cuenta aprobada para guardar entradas"); return; }
+  if (editingEntryId) {
+    const existing = state.entries.find(e => e.id === editingEntryId);
+    if (existing && !canEditEntry(existing)) { showToast("No tienes permiso para editar esta entrada"); return; }
+  }
+
   const title = document.getElementById("entryTitle").value.trim();
   const sectionId = document.getElementById("entrySection").value;
   if (!title || !sectionId) return;
@@ -612,6 +897,11 @@ async function saveEntryFromForm(ev) {
 
   const memberIds = [...document.querySelectorAll("#entryMemberList input[type=checkbox]:checked")]
     .map(c => c.value);
+
+  if (isApprovedMember() && !memberIds.includes(myProfile.member_id)) {
+    showToast("Debes incluirte como integrante de esta entrada");
+    return;
+  }
 
   // Fila con los nombres de columna de la tabla "entries" en Supabase.
   const row = {
@@ -642,6 +932,7 @@ async function saveEntryFromForm(ev) {
 async function deleteEntry(entryId) {
   const entry = state.entries.find(e => e.id === entryId);
   if (!entry) return;
+  if (!canEditEntry(entry)) { showToast("No tienes permiso para eliminar esta entrada"); return; }
   if (!confirm(`¿Eliminar la entrada "${entry.title}"? Esta acción no se puede deshacer.`)) return;
   const { error } = await sb.from("entries").delete().eq("id", entryId);
   if (error) { console.warn(error); showToast("No se pudo eliminar la entrada"); return; }
@@ -673,6 +964,7 @@ function openViewModal(entryId) {
 /* ---------- CRUD: Secciones ---------- */
 async function saveSectionFromForm(ev) {
   ev.preventDefault();
+  if (!isAdmin()) { showToast("Solo el administrador puede crear secciones"); return; }
   const name = document.getElementById("sectionName").value.trim();
   if (!name) return;
   const section = {
@@ -694,6 +986,7 @@ async function saveSectionFromForm(ev) {
 }
 
 async function deleteSection(sectionId) {
+  if (!isAdmin()) { showToast("Solo el administrador puede eliminar secciones"); return; }
   const sec = getSection(sectionId);
   if (!sec) return;
   const count = state.entries.filter(e => e.sectionId === sectionId).length;
@@ -713,6 +1006,7 @@ async function deleteSection(sectionId) {
 
 /* ---------- CRUD: Integrantes ---------- */
 function openMembersModal() {
+  if (!isAdmin()) { showToast("Solo el administrador puede gestionar integrantes"); return; }
   renderMembersList();
   document.getElementById("membersModalOverlay").classList.add("open");
 }
@@ -736,6 +1030,7 @@ function renderMembersList() {
 
 async function saveMembersFromForm(ev) {
   ev.preventDefault();
+  if (!isAdmin()) { showToast("Solo el administrador puede gestionar integrantes"); return; }
   const rows = [...document.querySelectorAll("#membersList .member-row")];
   const keptIds = new Set();
   const newMembers = rows.map((row, i) => {
@@ -808,14 +1103,27 @@ function handleSearch(query) {
 }
 
 /* ---------- Eventos globales ---------- */
-document.getElementById("btnNuevaEntrada").addEventListener("click", () => openEntryModal(null));
+document.getElementById("btnNuevaEntrada").addEventListener("click", () => {
+  if (!canWrite()) { openAuthModal("login"); return; }
+  openEntryModal(null);
+});
 document.getElementById("closeEntryModal").addEventListener("click", closeEntryModal);
 document.getElementById("cancelEntry").addEventListener("click", closeEntryModal);
 document.getElementById("entryForm").addEventListener("submit", saveEntryFromForm);
 
 document.getElementById("closeViewModal").addEventListener("click", () => document.getElementById("viewModalOverlay").classList.remove("open"));
 
-document.getElementById("btnNuevaSeccion").addEventListener("click", () => document.getElementById("sectionModalOverlay").classList.add("open"));
+document.getElementById("btnOpenAuth").addEventListener("click", () => openAuthModal("login"));
+document.getElementById("closeAuthModal").addEventListener("click", closeAuthModal);
+document.querySelectorAll(".auth-tab").forEach(tab => tab.addEventListener("click", () => setAuthTab(tab.dataset.tab)));
+document.getElementById("loginForm").addEventListener("submit", handleLogin);
+document.getElementById("signupForm").addEventListener("submit", handleSignup);
+document.getElementById("btnLogout").addEventListener("click", handleLogout);
+
+document.getElementById("btnNuevaSeccion").addEventListener("click", () => {
+  if (!isAdmin()) { showToast("Solo el administrador puede crear secciones"); return; }
+  document.getElementById("sectionModalOverlay").classList.add("open");
+});
 document.getElementById("closeSectionModal").addEventListener("click", () => document.getElementById("sectionModalOverlay").classList.remove("open"));
 document.getElementById("cancelSection").addEventListener("click", () => document.getElementById("sectionModalOverlay").classList.remove("open"));
 document.getElementById("sectionForm").addEventListener("submit", saveSectionFromForm);
@@ -858,7 +1166,7 @@ document.getElementById("menuToggle").addEventListener("click", () => {
   else sidebar.classList.toggle("collapsed");
 });
 
-document.querySelectorAll('.nav-item[data-view="dashboard"], .nav-item[data-view="acerca"]').forEach(btn => {
+document.querySelectorAll('.nav-item[data-view="dashboard"], .nav-item[data-view="acerca"], .nav-item[data-view="solicitudes"]').forEach(btn => {
   btn.addEventListener("click", () => {
     currentPage = btn.dataset.view;
     currentSectionId = null;
@@ -873,8 +1181,19 @@ document.addEventListener("keydown", (ev) => {
 
 /* ---------- Inicio ---------- */
 async function init() {
+  await loadMyProfile();
   state = await loadState();
+  if (isAdmin()) await loadPendingProfiles();
   render();
-  subscribeRealtime(); // los cambios de otros compañeros llegan en vivo
+  refreshAuthUI();
+  subscribeRealtime();     // los cambios de otros compañeros llegan en vivo
+  subscribeAuthRealtime(); // aprobaciones/rechazos llegan en vivo
+
+  sb.auth.onAuthStateChange(async () => {
+    await loadMyProfile();
+    if (isAdmin()) await loadPendingProfiles(); else pendingProfiles = [];
+    refreshAuthUI();
+    render();
+  });
 }
 init();
